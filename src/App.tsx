@@ -109,7 +109,7 @@ function App() {
       });
 
       // 2. Fill specific selected roles
-      let requiredPool: Agent[] = [];
+      const requiredPool: Agent[] = [];
       Object.entries(remainingRoleCounts).forEach(([role, count]) => {
          const specificRole = role as Role;
          for (let i = 0; i < count; i++) {
