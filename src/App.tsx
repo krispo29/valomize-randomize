@@ -5,6 +5,7 @@ import { RoleSelector } from '@/components/RoleSelector';
 import { Button } from '@/components/ui/button';
 import { AGENTS, DEFAULT_FRIENDS, type Agent, type Role } from '@/data/valorant';
 import { Shuffle, RefreshCw, UserCog, Settings2 } from 'lucide-react';
+import jettLogo from '@/assets/jett_logo.png';
 
 function App() {
   const [friends, setFriends] = useState<string[]>(DEFAULT_FRIENDS);
@@ -190,6 +191,14 @@ function App() {
       
       <div className="container mx-auto py-10 px-4 relative z-10">
         <header className="flex flex-col items-center mb-12">
+          <motion.img 
+            src={jettLogo} 
+            alt="Jett Logo" 
+            className="w-24 h-24 md:w-32 md:h-32 object-contain mb-2 drop-shadow-[0_0_15px_rgba(220,38,38,0.5)]"
+            initial={{ scale: 0, opacity: 0, rotate: -180 }}
+            animate={{ scale: 1, opacity: 1, rotate: 0 }}
+            transition={{ type: "spring", stiffness: 260, damping: 20 }}
+          />
           <motion.h1 
             className="text-6xl md:text-8xl font-black uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-red-500 to-red-800 drop-shadow-sm select-none"
             initial={{ y: -50, opacity: 0 }}
