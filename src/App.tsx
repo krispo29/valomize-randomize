@@ -27,6 +27,7 @@ function App() {
 
   // Initialize assignments keys
   const [assignmentsByIndex, setAssignmentsByIndex] = useState<Record<number, Agent | null>>({});
+  const [revealIndex, setRevealIndex] = useState<number>(-1); // -1 = not revealing, 0+ = revealing up to this index
 
   useEffect(() => {
     // Only set initial state on mount if empty
@@ -52,6 +53,7 @@ function App() {
 
     setTimeout(() => {
       clearInterval(interval);
+      setRevealIndex(-1); // Reset reveal before calculating final
       
       const final: Record<number, Agent> = {};
       const assignedIndices = new Set<number>();
@@ -171,6 +173,13 @@ function App() {
 
       setAssignmentsByIndex(final);
       setIsRolling(false);
+      
+      // Staggered reveal from left to right
+      friends.forEach((_, idx) => {
+        setTimeout(() => {
+          setRevealIndex(idx);
+        }, idx * 400); // 400ms delay between each reveal
+      });
     }, 2000);
   };
 
@@ -279,8 +288,8 @@ function App() {
             <AgentCard 
               key={index} 
               playerName={friend}
-              agent={assignmentsByIndex[index] || null}
-              rolling={isRolling}
+              agent={revealIndex >= index ? assignmentsByIndex[index] : null}
+              rolling={isRolling || (revealIndex < index && assignmentsByIndex[index] !== undefined && assignmentsByIndex[index] !== null)}
               canEdit={editMode}
               onEditName={(name) => updateName(index, name)}
               className="w-full max-w-[300px]"
@@ -294,8 +303,12 @@ function App() {
         
         {editMode && (
           <div className="flex justify-center mt-12 gap-4">
-            <Button variant="secondary" onClick={() => setFriends([...friends, `Player ${friends.length + 1}`])}>
-              + Add Player
+            <Button 
+              variant="secondary" 
+              onClick={() => setFriends([...friends, `Player ${friends.length + 1}`])}
+              disabled={friends.length >= 5}
+            >
+              + Add Player {friends.length >= 5 && '(Max 5)'}
             </Button>
             {friends.length > 1 && (
               <Button variant="destructive" onClick={() => {
