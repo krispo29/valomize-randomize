@@ -227,7 +227,7 @@ function App() {
             transition={{ type: "spring", stiffness: 260, damping: 20 }}
           />
           <motion.h1 
-            className="text-6xl md:text-8xl font-black uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-red-500 to-red-800 drop-shadow-sm select-none"
+            className="text-5xl md:text-8xl font-black uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-red-500 to-red-800 drop-shadow-sm select-none"
             initial={{ y: -50, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
           >
@@ -253,34 +253,36 @@ function App() {
           </motion.div>
         )}
 
-        <div className="flex justify-center gap-4 mb-8">
+        <div className="flex flex-wrap justify-center gap-2 md:gap-4 mb-8">
            <Button 
              size="lg" 
              onClick={handleRollSafe} 
              disabled={isRolling}
-             className="bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest px-10 py-8 text-xl rounded-sm shadow-[0_0_20px_rgba(220,38,38,0.5)] transition-all transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:grayscale"
+             className="bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest px-6 py-6 md:px-10 md:py-8 text-lg md:text-xl rounded-sm shadow-[0_0_20px_rgba(220,38,38,0.5)] transition-all transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:grayscale flex-grow md:flex-grow-0"
            >
-             {isRolling ? <RefreshCw className="mr-2 h-6 w-6 animate-spin" /> : <Shuffle className="mr-2 h-6 w-6" />}
+             {isRolling ? <RefreshCw className="mr-2 h-5 w-5 md:h-6 md:w-6 animate-spin" /> : <Shuffle className="mr-2 h-5 w-5 md:h-6 md:w-6" />}
              {isRolling ? "ROLLING..." : "RANDOMIZE AGENTS"}
            </Button>
            
-           <Button
-             variant="outline"
-             onClick={() => setShowSettings(!showSettings)}
-             className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-auto ${showSettings ? 'border-red-500 bg-zinc-700' : ''}`}
-             title="Team Composition Settings"
-           >
-             <Settings2 className="h-6 w-6" />
-           </Button>
+           <div className="flex gap-2 h-auto">
+             <Button
+               variant="outline"
+               onClick={() => setShowSettings(!showSettings)}
+               className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${showSettings ? 'border-red-500 bg-zinc-700' : ''}`}
+               title="Team Composition Settings"
+             >
+               <Settings2 className="h-6 w-6" />
+             </Button>
 
-           <Button
-             variant="outline"
-             onClick={() => setEditMode(!editMode)}
-             className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-auto ${editMode ? 'border-red-500 bg-zinc-700' : ''}`}
-             title="Edit Players"
-           >
-             <UserCog className="h-6 w-6" />
-           </Button>
+             <Button
+               variant="outline"
+               onClick={() => setEditMode(!editMode)}
+               className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${editMode ? 'border-red-500 bg-zinc-700' : ''}`}
+               title="Edit Players"
+             >
+               <UserCog className="h-6 w-6" />
+             </Button>
+           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 justify-items-center">
