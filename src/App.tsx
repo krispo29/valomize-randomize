@@ -4,9 +4,11 @@ import { AgentCard } from '@/components/AgentCard';
 import { RoleSelector } from '@/components/RoleSelector';
 import { Button } from '@/components/ui/button';
 import { AGENTS, DEFAULT_FRIENDS, type Agent, type Role, type ValorantMap, MAP_META, MAP_ROLE_COMPOSITION } from '@/data/valorant';
-import { Shuffle, RefreshCw, UserCog, Settings2, Map as MapIcon } from 'lucide-react';
+import { Shuffle, RefreshCw, UserCog, Settings2, Map as MapIcon, Volume2, VolumeX } from 'lucide-react';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { useSoundManager } from '@/hooks/useSoundManager';
+import { VictoryScreen } from '@/components/VictoryScreen';
 import jettLogo from '@/assets/jett_logo.png';
 
 const MapSelector = lazy(() => import('@/components/MapSelector').then(module => ({ default: module.MapSelector })));
@@ -34,6 +36,10 @@ function App() {
   // Initialize assignments keys
   const [assignmentsByIndex, setAssignmentsByIndex] = useState<Record<number, Agent | null>>({});
   const [revealIndex, setRevealIndex] = useState<number>(-1); // -1 = not revealing, 0+ = revealing up to this index
+  const [showVictory, setShowVictory] = useState(false);
+
+  // Sound manager
+  const { playRoll, stopRoll, playReveal, playVictory, playLock, isMuted, toggleMute } = useSoundManager();
 
   useEffect(() => {
     // Only set initial state on mount if empty
@@ -48,7 +54,13 @@ function App() {
   const handleRollSafe = () => {
     if (isRolling) return;
     setEditMode(false); // Auto close edit mode when rolling
+    setShowSettings(false);
+    setShowMapSelector(false);
     setIsRolling(true);
+
+    playRoll(); // Start drum roll
+    setRevealIndex(-1); // Reset reveal
+    setShowVictory(false); // Hide victory screen
 
     const interval = setInterval(() => {
        const temp: Record<number, Agent> = {};
@@ -196,17 +208,27 @@ function App() {
 
       setAssignmentsByIndex(final);
       setIsRolling(false);
+      stopRoll(); // Stop drum roll
       
       // Staggered reveal from left to right
       friends.forEach((_, idx) => {
         setTimeout(() => {
           setRevealIndex(idx);
-        }, idx * 400); // 400ms delay between each reveal
+          if (idx === friends.length - 1) {
+             playVictory();
+             setTimeout(() => setShowVictory(true), 500);
+          } else {
+             playReveal();
+          }
+        }, idx * 800); // Slower reveal for dramatic effect (800ms)
       });
     }, 2000);
   };
 
   const handleStatusChange = (index: number, newStatus: 'MVP' | 'BOTTOM' | null) => {
+    if (newStatus) {
+      playLock();
+    }
     setPlayerStatuses(prev => {
       const next = { ...prev };
       
@@ -272,7 +294,7 @@ function App() {
           </motion.p>
         </header>
 
-        {showMapSelector && (
+        {(showMapSelector || selectedMap) && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
             <ErrorBoundary>
               <Suspense fallback={
@@ -284,8 +306,22 @@ function App() {
                   selectedMap={selectedMap} 
                   onSelectMap={(map) => {
                     setSelectedMap(map);
-                    if (map) setShowSettings(false);
+                    if (map) {
+                      setShowSettings(false);
+                      setShowMapSelector(false); // Auto Collapse (show summary)
+                    } else {
+                      setShowMapSelector(true); // Keep open if cleared? Or false? User wanted clear -> hidden.
+                      // Actually, if we clear, selectedMap becomes null. 
+                      // If showMapSelector is false, it unmounts.
+                      // We want it to unmount if cleared.
+                      // If we are HERE, map was not null. 
+                      // If we clear, map becomes null.
+                      // If we set showMapSelector(false), then (false || null) -> unmount. Correct.
+                      setShowMapSelector(false); // Close it.
+                    }
                   }} 
+                  isExpanded={showMapSelector}
+                  onToggleExpand={() => setShowMapSelector(!showMapSelector)}
                 />
               </Suspense>
             </ErrorBoundary>
@@ -312,10 +348,10 @@ function App() {
                setShowMapSelector(!showMapSelector);
                if (!showMapSelector) setShowSettings(false);
              }}
-             className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${showMapSelector ? 'border-red-500 bg-zinc-700' : ''}`}
+             className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${(showMapSelector || selectedMap) ? 'border-red-500 bg-zinc-700' : ''}`}
              title="Map Meta Selection"
            >
-             <MapIcon className="h-6 w-6" />
+             <MapIcon className={`h-6 w-6 ${selectedMap ? 'text-red-400' : ''}`} />
            </Button>
 
            {/* Main Randomize Button */}
@@ -326,17 +362,27 @@ function App() {
              className="bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest px-6 py-6 md:px-10 md:py-8 text-lg md:text-xl rounded-sm shadow-[0_0_20px_rgba(220,38,38,0.5)] transition-all transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:grayscale flex-grow md:flex-grow-0"
            >
              {isRolling ? <RefreshCw className="mr-2 h-5 w-5 md:h-6 md:w-6 animate-spin" /> : <Shuffle className="mr-2 h-5 w-5 md:h-6 md:w-6" />}
-             {isRolling ? "ROLLING..." : "RANDOMIZE AGENTS"}
+             {isRolling ? "LOCKING IN..." : "RANDOMIZE AGENTS"}
            </Button>
            
            <div className="flex gap-2 h-auto">
+             <Button
+               variant="outline"
+               onClick={toggleMute}
+               disabled={isRolling}
+               className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto min-w-[3.5rem] ${isMuted ? 'opacity-50' : ''}`}
+               title={isMuted ? "Unmute" : "Mute Sounds"}
+             >
+               {isMuted ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
+             </Button>
+
              <Button
                variant="outline"
                onClick={() => {
                  setShowSettings(!showSettings);
                  if (!showSettings) setShowMapSelector(false);
                }}
-               disabled={!!selectedMap}
+               disabled={!!selectedMap || isRolling}
                className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${showSettings ? 'border-red-500 bg-zinc-700' : ''} ${selectedMap ? 'opacity-50' : ''}`}
                title={selectedMap ? "Using Map Meta (Settings Disabled)" : "Team Composition Settings"}
              >
@@ -346,6 +392,7 @@ function App() {
              <Button
                variant="outline"
                onClick={() => setEditMode(!editMode)}
+               disabled={isRolling}
                className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${editMode ? 'border-red-500 bg-zinc-700' : ''}`}
                title="Edit Players"
              >
@@ -353,6 +400,18 @@ function App() {
              </Button>
            </div>
         </div>
+
+        <VictoryScreen 
+          show={showVictory} 
+          players={friends} 
+          assignments={assignmentsByIndex} 
+		  playerStatuses={playerStatuses}
+          onPlayAgain={() => {
+            setShowVictory(false);
+            handleRollSafe();
+          }}
+          onClose={() => setShowVictory(false)}
+        />
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 justify-items-center">
           {friends.map((friend, index) => (

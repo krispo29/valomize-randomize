@@ -149,23 +149,51 @@ export function AgentCard({
         <CardContent className="z-10 flex flex-col items-center justify-center flex-1 w-full gap-4">
           <div className="relative w-32 h-32 md:w-40 md:h-40 flex items-center justify-center">
             {rolling && (
-              <motion.div 
-                className="text-4xl font-bold text-white/50"
-                animate={{ opacity: [0.5, 1, 0.5], scale: [0.9, 1.1, 0.9] }}
-                transition={{ repeat: Infinity, duration: 0.2 }}
-              >
-                ROLLING
-              </motion.div>
+              <div className="relative w-24 h-24 flex items-center justify-center">
+                 {/* Outer Ring - Dashed */}
+                 <motion.div 
+                   className="absolute inset-0 rounded-full border-2 border-dashed border-red-500/50"
+                   animate={{ rotate: 360 }}
+                   transition={{ repeat: Infinity, duration: 3, ease: "linear" }}
+                 />
+                 {/* Outer Ring 2 - Opposite */}
+                 <motion.div 
+                   className="absolute inset-2 rounded-full border border-zinc-700"
+                   animate={{ rotate: -360 }}
+                   transition={{ repeat: Infinity, duration: 4, ease: "linear" }}
+                 />
+                 
+                 {/* Inner Segment Spinning Fast */}
+                 <motion.div 
+                   className="absolute inset-4 rounded-full border-t-2 border-r-2 border-red-500"
+                   animate={{ rotate: 360 }}
+                   transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                 />
+                 
+                 {/* Center Pulse */}
+                 <motion.div 
+                   className="absolute w-4 h-4 bg-red-500 rounded-full"
+                   animate={{ scale: [0.8, 1.2, 0.8], opacity: [0.5, 1, 0.5] }}
+                   transition={{ repeat: Infinity, duration: 0.8 }}
+                 />
+                 
+                 {/* Tech accent lines */}
+                 <div className="absolute top-0 left-1/2 -ml-0.5 w-1 h-2 bg-red-500" />
+                 <div className="absolute bottom-0 left-1/2 -ml-0.5 w-1 h-2 bg-red-500" />
+                 <div className="absolute left-0 top-1/2 -mt-0.5 w-2 h-1 bg-red-500" />
+                 <div className="absolute right-0 top-1/2 -mt-0.5 w-2 h-1 bg-red-500" />
+              </div>
             )}
             {!rolling && agent && (
-               <motion.img 
-                 src={agent.image} 
-                 alt={agent.name}
-                 initial={{ scale: 0.8, opacity: 0, rotate: -10 }}
-                 animate={{ scale: 1, opacity: 1, rotate: 0 }}
-                 transition={{ type: "spring", stiffness: 200, damping: 15 }}
-                 className="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]"
-               />
+               <div className="animate-flip-in w-full h-full relative">
+                 <img 
+                   src={agent.image} 
+                   alt={agent.name}
+                   className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(255,255,255,0.4)]"
+                 />
+                 {/* Shine effect overlay */}
+                 <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/30 to-transparent opacity-0 animate-[shine_0.5s_ease-out_0.2s_forwards] pointer-events-none" />
+               </div>
             )}
             {!rolling && !agent && (
                 <div className="text-6xl text-zinc-700">?</div>
