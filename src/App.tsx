@@ -47,6 +47,7 @@ function App() {
 
   const handleRollSafe = () => {
     if (isRolling) return;
+    setEditMode(false); // Auto close edit mode when rolling
     setIsRolling(true);
 
     const interval = setInterval(() => {
@@ -281,7 +282,10 @@ function App() {
               }>
                 <MapSelector 
                   selectedMap={selectedMap} 
-                  onSelectMap={setSelectedMap} 
+                  onSelectMap={(map) => {
+                    setSelectedMap(map);
+                    if (map) setShowSettings(false);
+                  }} 
                 />
               </Suspense>
             </ErrorBoundary>
@@ -332,8 +336,9 @@ function App() {
                  setShowSettings(!showSettings);
                  if (!showSettings) setShowMapSelector(false);
                }}
-               className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${showSettings ? 'border-red-500 bg-zinc-700' : ''}`}
-               title="Team Composition Settings"
+               disabled={!!selectedMap}
+               className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${showSettings ? 'border-red-500 bg-zinc-700' : ''} ${selectedMap ? 'opacity-50' : ''}`}
+               title={selectedMap ? "Using Map Meta (Settings Disabled)" : "Team Composition Settings"}
              >
                <Settings2 className="h-6 w-6" />
              </Button>
@@ -351,9 +356,9 @@ function App() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 justify-items-center">
           {friends.map((friend, index) => (
-            <ErrorBoundary key={`boundary-${friend}-${index}`}>
+            <ErrorBoundary key={`boundary-${index}`}>
               <AgentCard 
-                key={`agent-${friend}-${index}`} 
+                key={`agent-${index}`} 
                 playerName={friend}
                 agent={revealIndex >= index ? assignmentsByIndex[index] : null}
                 rolling={isRolling || (revealIndex < index && assignmentsByIndex[index] !== undefined && assignmentsByIndex[index] !== null)}
