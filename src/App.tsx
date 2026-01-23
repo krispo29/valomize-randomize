@@ -4,7 +4,7 @@ import { AgentCard } from '@/components/AgentCard';
 import { RoleSelector } from '@/components/RoleSelector';
 import { Button } from '@/components/ui/button';
 import { AGENTS, DEFAULT_FRIENDS, type Agent, type Role, type ValorantMap, MAP_META, MAP_ROLE_COMPOSITION } from '@/data/valorant';
-import { Shuffle, RefreshCw, UserCog, Settings2, Map as MapIcon, Volume2, VolumeX } from 'lucide-react';
+import { Shuffle, UserCog, Settings2, Map as MapIcon, Volume2, VolumeX } from 'lucide-react';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useSoundManager } from '@/hooks/useSoundManager';
@@ -13,9 +13,11 @@ import jettLogo from '@/assets/jett_logo.png';
 
 const MapSelector = lazy(() => import('@/components/MapSelector').then(module => ({ default: module.MapSelector })));
 
+type Phase = 'IDLE' | 'GATHERING' | 'SHUFFLING' | 'DEALING' | 'REVEALING';
+
 function App() {
   const [friends, setFriends] = useLocalStorage<string[]>('valorant-friends', DEFAULT_FRIENDS);
-  const [isRolling, setIsRolling] = useState(false);
+  const [phase, setPhase] = useState<Phase>('IDLE');
   const [editMode, setEditMode] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showMapSelector, setShowMapSelector] = useState(false);
@@ -33,86 +35,44 @@ function App() {
     'Sentinel': 0
   });
 
-  // Initialize assignments keys
   const [assignmentsByIndex, setAssignmentsByIndex] = useState<Record<number, Agent | null>>({});
-  const [revealIndex, setRevealIndex] = useState<number>(-1); // -1 = not revealing, 0+ = revealing up to this index
   const [showVictory, setShowVictory] = useState(false);
-  const [shuffledPlayerOrder, setShuffledPlayerOrder] = useState<number[]>([]);
+  
+  // Cards currently in the "Deck" (center stack) vs "Grid" (players)
+  const [deckIndices, setDeckIndices] = useState<number[]>([]);
+  const [gridIndices, setGridIndices] = useState<number[]>([]);
+  const [revealedIndices, setRevealedIndices] = useState<Set<number>>(new Set());
 
   // Sound manager
   const { playRoll, stopRoll, playReveal, playVictory, playLock, isMuted, toggleMute } = useSoundManager();
 
+  // Initialize
   useEffect(() => {
-    // Only set initial state on mount if empty
-    setAssignmentsByIndex(prev => {
-        if (Object.keys(prev).length > 0) return prev;
-        const initial: Record<number, Agent | null> = {};
-        friends.forEach((_, i) => initial[i] = null);
-        return initial;
-    });
-    
-    // Initialize shuffled player order
-    if (shuffledPlayerOrder.length === 0) {
-      setShuffledPlayerOrder(friends.map((_, i) => i));
+    if (gridIndices.length === 0 && deckIndices.length === 0) {
+        setGridIndices(friends.map((_, i) => i));
     }
-  }, [friends, shuffledPlayerOrder.length]); 
+  }, [friends, gridIndices.length, deckIndices.length]);
 
-  const handleRollSafe = () => {
-    if (isRolling) return;
-    setEditMode(false); // Auto close edit mode when rolling
-    setShowSettings(false);
-    setShowMapSelector(false);
-    setIsRolling(true);
+  // Sync grid indices with friends length changes
+  useEffect(() => {
+    if (phase === 'IDLE') {
+       if (gridIndices.length !== friends.length) {
+         setGridIndices(friends.map((_, i) => i));
+         setDeckIndices([]);
+       }
+    }
+  }, [friends, phase, gridIndices.length, friends.length]);
 
-    playRoll(); // Start drum roll
-    setRevealIndex(-1); // Reset reveal
-    setShowVictory(false); // Hide victory screen
 
-    // Initial shuffle for display
-    let currentShuffledOrder = friends.map((_, index) => index).sort(() => 0.5 - Math.random());
-    setShuffledPlayerOrder(currentShuffledOrder);
-    
-    // Shuffle player order multiple times during animation with optimized timing
-    let shuffleCount = 0;
-    const shuffleInterval = setInterval(() => {
-      if (shuffleCount < 3) {
-        // Use requestAnimationFrame for smoother updates
-        requestAnimationFrame(() => {
-          currentShuffledOrder = friends.map((_, index) => index).sort(() => 0.5 - Math.random());
-          setShuffledPlayerOrder([...currentShuffledOrder]);
-        });
-        shuffleCount++;
-      }
-    }, 700); // Optimized timing for smooth transitions
-    
-    const interval = setInterval(() => {
-       const temp: Record<number, Agent> = {};
-       // Show random agents during rolling animation
-       friends.forEach((_, index) => {
-          temp[index] = AGENTS[Math.floor(Math.random() * AGENTS.length)];
-       });
-       setAssignmentsByIndex(temp);
-    }, 80);
-
-    setTimeout(() => {
-      clearInterval(interval);
-      clearInterval(shuffleInterval);
-      setRevealIndex(-1); // Reset reveal before calculating final
-      
-      // Final shuffle for the actual result
-      const finalShuffledOrder = friends.map((_, index) => index).sort(() => 0.5 - Math.random());
-      setShuffledPlayerOrder(finalShuffledOrder);
-      
+  const calculateAssignments = () => {
       const final: Record<number, Agent> = {};
       const assignedIndices = new Set<number>();
       const usedAgentNames = new Set<string>();
       
-      // Determine agent pool based on map meta
       const currentPool = selectedMap 
           ? AGENTS.filter(a => new Set(MAP_META[selectedMap]).has(a.name))
           : AGENTS;
 
-      // Get role requirements from map composition or user settings
       const roleRequirements: Record<Role, number> = selectedMap 
           ? {
               'Duelist': MAP_ROLE_COMPOSITION[selectedMap].duelists,
@@ -131,7 +91,7 @@ function App() {
               : null;
       };
 
-      // 1. Handle Forced Assignments (MVP / Bottom)
+      // 1. Handle Forced Assignments
       friends.forEach((_, index) => {
           const status = playerStatuses[index];
           let roleToForce: Role | null = null;
@@ -143,46 +103,25 @@ function App() {
           }
 
           if (roleToForce) {
-              // Try to pick unique from meta pool first
               let agent = pickAgent(roleToForce, usedAgentNames, currentPool);
-              
-              // If no meta agent fits the role, fallback to all agents
-              if (!agent) {
-                  agent = pickAgent(roleToForce, usedAgentNames, AGENTS);
-              }
-
-              // Final fallback if unique exhausted
-              if (!agent) {
-                  const anyCandidates = AGENTS.filter(a => a.role === roleToForce);
-                  agent = anyCandidates[Math.floor(Math.random() * anyCandidates.length)];
-              }
+              if (!agent) agent = pickAgent(roleToForce, usedAgentNames, AGENTS);
               
               if (agent) {
                   final[index] = agent;
                   assignedIndices.add(index);
-                  usedAgentNames.add(agent.name); // Mark used
-                  
-                  if (remainingRoleCounts[roleToForce] > 0) {
-                      remainingRoleCounts[roleToForce]--;
-                  }
+                  usedAgentNames.add(agent.name);
+                  if (remainingRoleCounts[roleToForce] > 0) remainingRoleCounts[roleToForce]--;
               }
           }
       });
 
-      // 2. Fill specific selected roles based on map requirements
+      // 2. Fill specific selected roles
       const requiredPool: Agent[] = [];
       Object.entries(remainingRoleCounts).forEach(([role, count]) => {
          const specificRole = role as Role;
          for (let i = 0; i < count; i++) {
-             // Try unique from meta
              let agent = pickAgent(specificRole, usedAgentNames, currentPool);
-             
-             // Fallback to all agents
-             if (!agent) {
-                 agent = pickAgent(specificRole, usedAgentNames, AGENTS);
-             }
-
-              // Fallback to any if unique exhausted
+             if (!agent) agent = pickAgent(specificRole, usedAgentNames, AGENTS);
              if (!agent) {
                   const anyCandidates = AGENTS.filter(a => a.role === specificRole);
                   agent = anyCandidates[Math.floor(Math.random() * anyCandidates.length)];
@@ -190,24 +129,18 @@ function App() {
 
              if (agent) {
                 requiredPool.push(agent);
-                usedAgentNames.add(agent.name); // Mark used immediately to prevent Dupes in this loop
+                usedAgentNames.add(agent.name);
              }
          }
       });
 
-      // 3. Fill remaining slots if any (shouldn't be needed with 5 players)
+      // 3. Fill remaining slots
       const remainingSlotsNeeded = friends.length - assignedIndices.size - requiredPool.length;
-      
       if (remainingSlotsNeeded > 0) {
-         // Try to fill from meta pool first
          const availableMeta = currentPool.filter(a => !usedAgentNames.has(a.name));
-         
-         // If meta is exhausted, fill from all available
          const availableAll = AGENTS.filter(a => !usedAgentNames.has(a.name));
-         
          const poolSource = availableMeta.length >= remainingSlotsNeeded ? availableMeta : availableAll;
          
-         // Shuffle the pool source
          const shuffledPoolSource = [...poolSource].sort(() => 0.5 - Math.random());
          
          for (let i = 0; i < remainingSlotsNeeded; i++) {
@@ -215,22 +148,19 @@ function App() {
                  requiredPool.push(shuffledPoolSource[i]);
                  usedAgentNames.add(shuffledPoolSource[i].name);
              } else {
-                 // Absolute backup if we run out of unique agents entirely (very rare)
                  requiredPool.push(AGENTS[Math.floor(Math.random() * AGENTS.length)]);
              }
          }
       }
 
-      // 4. Shuffle the Required Pool and create final player-agent assignments
+      // 4. Assign remaining
       const shuffledPool = [...requiredPool].sort(() => 0.5 - Math.random());
       
-      // Create shuffled player indices for final assignment
       const unassignedPlayerIndices = friends
         .map((_, index) => index)
         .filter(index => !assignedIndices.has(index))
-        .sort(() => 0.5 - Math.random()); // Shuffle player order
+        .sort(() => 0.5 - Math.random());
       
-      // 5. Assign agents to shuffled players
       let poolIndex = 0;
       unassignedPlayerIndices.forEach((playerIndex) => {
           if (shuffledPool[poolIndex]) {
@@ -239,202 +169,290 @@ function App() {
           }
       });
 
-      setAssignmentsByIndex(final);
-      setIsRolling(false);
-      stopRoll(); // Stop drum roll
-      
-      // Optimized wait time for smooth card settling
-      setTimeout(() => {
-        // Staggered reveal with optimized timing
-        finalShuffledOrder.forEach((_, displayIndex) => {
-          setTimeout(() => {
-            setRevealIndex(displayIndex);
-            if (displayIndex === finalShuffledOrder.length - 1) {
-               playVictory();
-               setTimeout(() => setShowVictory(true), 400);
-            } else {
-               playReveal();
-            }
-          }, displayIndex * 400); // Optimized reveal timing
+      return final;
+  };
+
+  const handleRollSafe = async () => {
+    if (phase !== 'IDLE') return;
+    
+    // 0. Setup
+    setEditMode(false);
+    setShowSettings(false);
+    setShowMapSelector(false);
+    setShowVictory(false);
+    setAssignmentsByIndex({});
+    setRevealedIndices(new Set());
+    playRoll();
+
+    // 1. GATHER
+    setPhase('GATHERING');
+    const allIndices = friends.map((_, i) => i);
+    setGridIndices([]);
+    const currentDeck = [...allIndices];
+    setDeckIndices(currentDeck);
+
+    await new Promise(r => setTimeout(r, 800));
+
+    // 2. SHUFFLE
+    setPhase('SHUFFLING');
+    for (let i = 0; i < 3; i++) {
+       currentDeck.sort(() => 0.5 - Math.random());
+       setDeckIndices([...currentDeck]);
+       await new Promise(r => setTimeout(r, 400));
+    }
+    
+    const results = calculateAssignments();
+    setAssignmentsByIndex(results);
+
+    // 3. DEAL & REVEAL LOOP
+    setPhase('DEALING');
+    stopRoll();
+    
+    const indicesToDeal = friends.map((_, i) => i);
+    
+    for (const playerIndex of indicesToDeal) {
+        // A. Deal Card (Face Down)
+        const deckPos = currentDeck.indexOf(playerIndex);
+        if (deckPos > -1) currentDeck.splice(deckPos, 1);
+        
+        setDeckIndices([...currentDeck]);
+        setGridIndices(prev => [...prev, playerIndex]);
+        
+        await new Promise(r => setTimeout(r, 600)); 
+
+        // B. Reveal Card (Face Up)
+        setRevealedIndices(prev => {
+            const next = new Set(prev);
+            next.add(playerIndex);
+            return next;
         });
-      }, 1000); // Optimal wait time for cards to settle
-    }, 2500); // Extended total time for smoother overall experience
+        playReveal();
+
+        await new Promise(r => setTimeout(r, 400));
+    }
+
+    // 4. VICTORY
+    setPhase('REVEALING');
+    await new Promise(r => setTimeout(r, 500));
+    playVictory();
+    setShowVictory(true);
+    setPhase('IDLE');
   };
 
   const handleStatusChange = (index: number, newStatus: 'MVP' | 'BOTTOM' | null) => {
-    if (newStatus) {
-      playLock();
-    }
+    if (newStatus) playLock();
     setPlayerStatuses(prev => {
       const next = { ...prev };
-      
-      // If setting a specific status, clear that status from any other player
-      if (newStatus === 'MVP') {
-        Object.keys(next).forEach(k => {
-          if (next[Number(k)] === 'MVP') next[Number(k)] = null;
-        });
-      }
-      if (newStatus === 'BOTTOM') {
-        Object.keys(next).forEach(k => {
-          if (next[Number(k)] === 'BOTTOM') next[Number(k)] = null;
-        });
-      }
-      
+      if (newStatus === 'MVP') Object.keys(next).forEach(k => { if (next[Number(k)] === 'MVP') next[Number(k)] = null; });
+      if (newStatus === 'BOTTOM') Object.keys(next).forEach(k => { if (next[Number(k)] === 'BOTTOM') next[Number(k)] = null; });
       next[index] = newStatus;
       return next;
     });
   };
 
-  const updateName = (index: number, newName: string) => {
-    const newFriends = [...friends];
-    newFriends[index] = newName;
-    setFriends(newFriends);
-  };
-
-  const clearName = (index: number) => {
-    const newFriends = [...friends];
-    newFriends[index] = '';
-    setFriends(newFriends);
-  };
-
   return (
-    <div className="min-h-screen bg-[#0f1923] text-white font-sans overflow-x-hidden relative">
+    <div className="min-h-screen bg-[#0f1923] text-white font-sans overflow-x-hidden relative flex flex-col">
       {/* Background Elements */}
       <div className="absolute top-0 right-0 w-1/2 h-full bg-red-600/10 skew-x-[-20deg] pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-1/3 h-1/2 bg-red-500/5 skew-x-[20deg] pointer-events-none" />
       
-      <div className="container mx-auto py-10 px-4 relative z-10">
-        <header className="flex flex-col items-center mb-12">
-          <motion.img 
-            src={jettLogo} 
-            alt="Jett Logo" 
-            className="w-24 h-24 md:w-32 md:h-32 object-contain mb-2 drop-shadow-[0_0_15px_rgba(220,38,38,0.5)]"
-            initial={{ scale: 0, opacity: 0, rotate: -180 }}
-            animate={{ scale: 1, opacity: 1, rotate: 0 }}
-            transition={{ type: "spring", stiffness: 260, damping: 20 }}
-          />
-          <motion.h1 
-            className="text-5xl md:text-8xl font-black uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-red-500 to-red-800 drop-shadow-sm select-none"
-            initial={{ y: -50, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-          >
-            VALOMIZE
-          </motion.h1>
-          <motion.p 
-             className="text-xl md:text-2xl font-bold tracking-widest uppercase text-white/50 mt-2 select-none"
-             initial={{ opacity: 0 }}
-             animate={{ opacity: 1 }}
-             transition={{ delay: 0.2 }}
-          >
-            Randomizer
-          </motion.p>
+      <div className="container mx-auto py-10 px-4 relative z-10 flex-grow flex flex-col">
+        <header className="flex flex-col items-center mb-8">
+          <motion.div className="flex items-center gap-4">
+               <motion.img 
+                src={jettLogo} 
+                alt="Jett Logo" 
+                className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-[0_0_15px_rgba(220,38,38,0.5)]"
+                initial={{ scale: 0, opacity: 0, rotate: -180 }}
+                animate={{ scale: 1, opacity: 1, rotate: 0 }}
+              />
+              <div className="flex flex-col">
+                <motion.h1 
+                    className="text-4xl md:text-6xl font-black uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-red-500 to-red-800 drop-shadow-sm select-none"
+                    initial={{ y: -50, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                >
+                    VALOMIZE
+                </motion.h1>
+                <motion.p 
+                    className="text-sm md:text-xl font-bold tracking-widest uppercase text-white/50 select-none"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.2 }}
+                >
+                    Randomizer
+                </motion.p>
+              </div>
+          </motion.div>
         </header>
 
-        {(showMapSelector || selectedMap) && (
-          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
-            <ErrorBoundary>
-              <Suspense fallback={
-                <div className="bg-zinc-900 border border-zinc-700 p-4 rounded-lg mb-8 max-w-4xl mx-auto">
-                  <div className="text-center text-zinc-400">Loading map selector...</div>
+        {/* Controls Area */}
+        {phase === 'IDLE' && (
+            <div className="mb-8">
+                {/* Collapsible Areas */}
+                {(showMapSelector || selectedMap) && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mb-4">
+                    <ErrorBoundary>
+                    <Suspense fallback={<div className="text-zinc-400 text-center">Loading selector...</div>}>
+                        <MapSelector 
+                        selectedMap={selectedMap} 
+                        onSelectMap={(map) => {
+                            setSelectedMap(map);
+                            if (map) { setShowSettings(false); setShowMapSelector(false); }
+                            else { setShowMapSelector(false); }
+                        }} 
+                        isExpanded={showMapSelector}
+                        onToggleExpand={() => setShowMapSelector(!showMapSelector)}
+                        />
+                    </Suspense>
+                    </ErrorBoundary>
+                </motion.div>
+                )}
+
+                {showSettings && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mb-4">
+                    <ErrorBoundary>
+                    <RoleSelector rolesCount={rolesCount} setRolesCount={setRolesCount} totalPlayers={friends.length} />
+                    </ErrorBoundary>
+                </motion.div>
+                )}
+
+                {/* Buttons */}
+                <div className="flex flex-wrap justify-center gap-2 md:gap-4">
+                    <Button
+                        variant="outline"
+                        onClick={() => { setShowMapSelector(!showMapSelector); if (!showMapSelector) setShowSettings(false); }}
+                        className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${(showMapSelector || selectedMap) ? 'border-red-500 bg-zinc-700' : ''}`}
+                        title="Map Meta Selection"
+                    >
+                        <MapIcon className={`h-6 w-6 ${selectedMap ? 'text-red-400' : ''}`} />
+                    </Button>
+
+                    <Button 
+                        size="lg" 
+                        onClick={handleRollSafe} 
+                        className="bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest px-6 py-6 md:px-10 md:py-8 text-lg md:text-xl rounded-sm shadow-[0_0_20px_rgba(220,38,38,0.5)] transition-all transform hover:scale-105 active:scale-95"
+                    >
+                        <Shuffle className="mr-2 h-5 w-5 md:h-6 md:w-6" />
+                        RANDOMIZE AGENTS
+                    </Button>
+                    
+                    <div className="flex gap-2 h-auto">
+                        <Button
+                            variant="outline"
+                            onClick={toggleMute}
+                            className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto min-w-[3.5rem] ${isMuted ? 'opacity-50' : ''}`}
+                        >
+                            {isMuted ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
+                        </Button>
+
+                        <Button
+                            variant="outline"
+                            onClick={() => { setShowSettings(!showSettings); if (!showSettings) setShowMapSelector(false); }}
+                            disabled={!!selectedMap}
+                            className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${showSettings ? 'border-red-500 bg-zinc-700' : ''} ${selectedMap ? 'opacity-50' : ''}`}
+                        >
+                            <Settings2 className="h-6 w-6" />
+                        </Button>
+
+                        <Button
+                            variant="outline"
+                            onClick={() => setEditMode(!editMode)}
+                            className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${editMode ? 'border-red-500 bg-zinc-700' : ''}`}
+                        >
+                            <UserCog className="h-6 w-6" />
+                        </Button>
+                    </div>
                 </div>
-              }>
-                <MapSelector 
-                  selectedMap={selectedMap} 
-                  onSelectMap={(map) => {
-                    setSelectedMap(map);
-                    if (map) {
-                      setShowSettings(false);
-                      setShowMapSelector(false); // Auto Collapse (show summary)
-                    } else {
-                      setShowMapSelector(true); // Keep open if cleared? Or false? User wanted clear -> hidden.
-                      // Actually, if we clear, selectedMap becomes null. 
-                      // If showMapSelector is false, it unmounts.
-                      // We want it to unmount if cleared.
-                      // If we are HERE, map was not null. 
-                      // If we clear, map becomes null.
-                      // If we set showMapSelector(false), then (false || null) -> unmount. Correct.
-                      setShowMapSelector(false); // Close it.
-                    }
-                  }} 
-                  isExpanded={showMapSelector}
-                  onToggleExpand={() => setShowMapSelector(!showMapSelector)}
-                />
-              </Suspense>
-            </ErrorBoundary>
-          </motion.div>
+            </div>
         )}
 
-        {showSettings && (
-          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
-            <ErrorBoundary>
-              <RoleSelector 
-                rolesCount={rolesCount} 
-                setRolesCount={setRolesCount} 
-                totalPlayers={friends.length} 
-              />
-            </ErrorBoundary>
-          </motion.div>
-        )}
+        {/* --- MAIN GAME AREA --- */}
+        <div className="relative flex-grow min-h-[400px] perspective-1000">
+            
+            {/* The Deck (Bottom Right) */}
+            <AnimatePresence>
+                {(phase === 'GATHERING' || phase === 'SHUFFLING' || phase === 'DEALING') && deckIndices.length > 0 && (
+                    <div className="absolute bottom-10 right-10 flex items-end justify-end z-20 pointer-events-none">
+                        {deckIndices.map((playerIndex, i) => (
+                             <motion.div
+                                key={`deck-card-${playerIndex}`}
+                                layoutId={`card-${playerIndex}`}
+                                className="absolute w-[200px]"
+                                style={{ 
+                                    zIndex: i,
+                                    rotate: Math.random() * 10 - 5
+                                }}
+                                transition={{ 
+                                    type: "spring", stiffness: 200, damping: 25,
+                                    layout: { duration: 0.5 } 
+                                }}
+                             >
+                                 <AgentCard 
+                                    playerName={friends[playerIndex]}
+                                    agent={null}
+                                    rolling={true}
+                                    canEdit={false}
+                                    status={null}
+                                    onStatusChange={() => {}}
+                                    mvpRole={null}
+                                    onMvpRoleChange={() => {}}
+                                />
+                             </motion.div>
+                        ))}
+                    </div>
+                )}
+            </AnimatePresence>
 
-        <div className="flex flex-wrap justify-center gap-2 md:gap-4 mb-8">
-           {/* Map Selection Toggle */}
-           <Button
-             variant="outline"
-             onClick={() => {
-               setShowMapSelector(!showMapSelector);
-               if (!showMapSelector) setShowSettings(false);
-             }}
-             className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${(showMapSelector || selectedMap) ? 'border-red-500 bg-zinc-700' : ''}`}
-             title="Map Meta Selection"
-           >
-             <MapIcon className={`h-6 w-6 ${selectedMap ? 'text-red-400' : ''}`} />
-           </Button>
+            {/* The Grid (Players) */}
+            <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 justify-items-center transition-opacity duration-500 ${(phase === 'GATHERING' || phase === 'SHUFFLING') ? 'opacity-30' : 'opacity-100'}`}>
+                {friends.map((friendName, index) => {
+                    const isInGrid = gridIndices.includes(index);
+                    const isRevealed = revealedIndices.has(index);
+                    const isFaceDown = phase === 'GATHERING' || phase === 'SHUFFLING' || (phase === 'DEALING' && !isRevealed);
 
-           {/* Main Randomize Button */}
-           <Button 
-             size="lg" 
-             onClick={handleRollSafe} 
-             disabled={isRolling}
-             className="bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest px-6 py-6 md:px-10 md:py-8 text-lg md:text-xl rounded-sm shadow-[0_0_20px_rgba(220,38,38,0.5)] transition-all transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:grayscale flex-grow md:flex-grow-0"
-           >
-             {isRolling ? <RefreshCw className="mr-2 h-5 w-5 md:h-6 md:w-6 animate-spin" /> : <Shuffle className="mr-2 h-5 w-5 md:h-6 md:w-6" />}
-             {isRolling ? "LOCKING IN..." : "RANDOMIZE AGENTS"}
-           </Button>
-           
-           <div className="flex gap-2 h-auto">
-             <Button
-               variant="outline"
-               onClick={toggleMute}
-               disabled={isRolling}
-               className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto min-w-[3.5rem] ${isMuted ? 'opacity-50' : ''}`}
-               title={isMuted ? "Unmute" : "Mute Sounds"}
-             >
-               {isMuted ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
-             </Button>
-
-             <Button
-               variant="outline"
-               onClick={() => {
-                 setShowSettings(!showSettings);
-                 if (!showSettings) setShowMapSelector(false);
-               }}
-               disabled={!!selectedMap || isRolling}
-               className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${showSettings ? 'border-red-500 bg-zinc-700' : ''} ${selectedMap ? 'opacity-50' : ''}`}
-               title={selectedMap ? "Using Map Meta (Settings Disabled)" : "Team Composition Settings"}
-             >
-               <Settings2 className="h-6 w-6" />
-             </Button>
-
-             <Button
-               variant="outline"
-               onClick={() => setEditMode(!editMode)}
-               disabled={isRolling}
-               className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${editMode ? 'border-red-500 bg-zinc-700' : ''}`}
-               title="Edit Players"
-             >
-               <UserCog className="h-6 w-6" />
-             </Button>
-           </div>
+                    return (
+                        <div key={`slot-${index}`} className="w-full max-w-[300px] h-[384px] relative border border-white/5 rounded-lg bg-white/5 flex items-center justify-center">
+                            <div className="absolute text-white/10 font-bold text-4xl select-none rotate-45">
+                                {index + 1}
+                            </div>
+                            
+                            {isInGrid && (
+                                <motion.div
+                                    key={`card-${index}`}
+                                    layoutId={`card-${index}`}
+                                    className="w-full h-full z-10"
+                                    transition={{ 
+                                        type: "spring", stiffness: 200, damping: 25,
+                                        layout: { duration: 0.5 }
+                                    }}
+                                >
+                                    <AgentCard 
+                                        playerName={friendName}
+                                        agent={assignmentsByIndex[index] || null}
+                                        rolling={isFaceDown} 
+                                        canEdit={editMode}
+                                        onEditName={(n) => {
+                                            const newF = [...friends];
+                                            newF[index] = n;
+                                            setFriends(newF);
+                                        }}
+                                        status={playerStatuses[index] || null}
+                                        onStatusChange={(s) => handleStatusChange(index, s)}
+                                        mvpRole={mvpRoleChoices[index] || null}
+                                        onMvpRoleChange={(r) => setMvpRoleChoices(prev => ({ ...prev, [index]: r }))}
+                                        onClearName={() => {
+                                            const newF = [...friends];
+                                            newF[index] = '';
+                                            setFriends(newF);
+                                        }}
+                                    />
+                                </motion.div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
         </div>
 
         <VictoryScreen 
@@ -442,70 +460,21 @@ function App() {
           players={friends} 
           assignments={assignmentsByIndex} 
 		  playerStatuses={playerStatuses}
-          shuffledOrder={shuffledPlayerOrder}
+          shuffledOrder={friends.map((_, i) => i)}
           onPlayAgain={() => {
             setShowVictory(false);
-            handleRollSafe();
+            setPhase('IDLE');
           }}
           onClose={() => setShowVictory(false)}
         />
-
-        <AnimatePresence mode="wait">
-          <motion.div 
-            key={shuffledPlayerOrder.join('-')}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 justify-items-center"
-            style={{ willChange: 'transform, opacity' }}
-            initial={{ opacity: 0.9 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0.9 }}
-            transition={{ 
-              duration: 0.3, 
-              ease: [0.25, 0.46, 0.45, 0.94] // Custom cubic-bezier for smoothness
-            }}
-          >
-            {shuffledPlayerOrder.map((originalIndex, displayIndex) => (
-              <ErrorBoundary key={`boundary-${originalIndex}`}>
-                <motion.div
-                  layoutId={`card-${originalIndex}`}
-                  style={{ 
-                    willChange: 'transform',
-                    transformOrigin: 'top left'
-                  }}
-                  transition={{ 
-                    type: "spring", 
-                    stiffness: 120,  // Reduced for smoother motion
-                    damping: 20,     // Increased for less bounce
-                    mass: 0.5,       // Lighter feel
-                    restDelta: 0.01, // More precise stopping
-                    restSpeed: 0.01  // Smoother ending
-                  }}
-                  className="w-full max-w-[300px]"
-                >
-                  <AgentCard 
-                    key={`agent-${originalIndex}`} 
-                    playerName={friends[originalIndex]}
-                    agent={revealIndex >= displayIndex ? assignmentsByIndex[originalIndex] : null}
-                    rolling={isRolling || (revealIndex < displayIndex && assignmentsByIndex[originalIndex] !== undefined && assignmentsByIndex[originalIndex] !== null)}
-                    canEdit={editMode}
-                    onEditName={(name) => updateName(originalIndex, name)}
-                    className="w-full"
-                    status={playerStatuses[originalIndex] || null}
-                    onStatusChange={(status) => handleStatusChange(originalIndex, status)}
-                    mvpRole={mvpRoleChoices[originalIndex] || null}
-                    onMvpRoleChange={(role) => setMvpRoleChoices(prev => ({ ...prev, [originalIndex]: role }))}
-                    onClearName={() => clearName(originalIndex)}
-                  />
-                </motion.div>
-              </ErrorBoundary>
-            ))}
-          </motion.div>
-        </AnimatePresence>
         
         {editMode && (
-          <div className="flex justify-center mt-12 gap-4">
+          <div className="flex justify-center mt-12 gap-4 pb-12">
             <Button 
               variant="secondary" 
-              onClick={() => setFriends([...friends, `Player ${friends.length + 1}`])}
+              onClick={() => {
+                 setFriends([...friends, `Player ${friends.length + 1}`]);
+              }}
               disabled={friends.length >= 5}
             >
               + Add Player {friends.length >= 5 && '(Max 5)'}
@@ -514,7 +483,6 @@ function App() {
               <Button variant="destructive" onClick={() => {
                 const newFriends = friends.slice(0, -1);
                 setFriends(newFriends);
-                // Clean up assignment
                 const newAssign = { ...assignmentsByIndex };
                 delete newAssign[newFriends.length];
                 setAssignmentsByIndex(newAssign);

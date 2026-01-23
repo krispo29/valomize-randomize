@@ -177,7 +177,7 @@ export function VictoryScreen({
                 
                 return (
                   <motion.div
-                    key={originalIndex}
+                    key={`${players[originalIndex] || 'player'}-${originalIndex}`}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.6 + displayIndex * 0.1 }}
