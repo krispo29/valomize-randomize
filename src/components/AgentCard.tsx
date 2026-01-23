@@ -58,15 +58,28 @@ export function AgentCard({
 
   return (
     <motion.div
-      layout
       className={cn("w-full relative group", className)}
-      initial={{ scale: 0.9, opacity: 0 }}
+      style={{ 
+        willChange: 'transform, opacity',
+        backfaceVisibility: 'hidden', // Prevent flickering
+        perspective: 1000 // Enable 3D acceleration
+      }}
+      initial={{ scale: 0.98, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
+      transition={{ 
+        type: "spring", 
+        stiffness: 150,
+        damping: 25,
+        mass: 0.4,
+        restDelta: 0.01,
+        restSpeed: 0.01
+      }}
     >
       <Card className={cn(
         "overflow-hidden border-2 bg-zinc-900 border-zinc-800 relative h-96 flex flex-col items-center justify-between shadow-lg transition-all duration-300 hover:border-red-500 hover:shadow-red-500/20 hover:scale-[1.02] hover:-translate-y-1",
-        status === 'MVP' && "border-yellow-500 shadow-yellow-500/20",
-        status === 'BOTTOM' && "border-blue-900 shadow-blue-900/20 opacity-90"
+        "will-change-transform backface-visibility-hidden transform-gpu", // Performance optimizations
+        !rolling && status === 'MVP' && "border-yellow-500 shadow-yellow-500/20",
+        !rolling && status === 'BOTTOM' && "border-blue-900 shadow-blue-900/20 opacity-90"
       )}>
         
         {/* Background gradient based on agent color */}
@@ -75,8 +88,8 @@ export function AgentCard({
            style={{ background: `linear-gradient(to bottom, ${displayAgent.color || '#333'}, transparent)` }}
         />
 
-        {/* Status Indicator Badge (Visible always if set) */}
-        {status && !canEdit && (
+        {/* Status Indicator Badge (Hidden during rolling) */}
+        {status && !canEdit && !rolling && (
             <div className={cn(
                 "absolute top-2 right-2 px-2 py-0.5 rounded text-[10px] font-bold uppercase z-20",
                 status === 'MVP' ? "bg-yellow-500 text-black" : "bg-blue-900 text-blue-200"
@@ -142,7 +155,9 @@ export function AgentCard({
                )}
              </div>
           ) : (
-             <CardTitle className="text-xl font-bold text-white uppercase tracking-wider">{playerName}</CardTitle>
+             <CardTitle className={cn("text-xl font-bold text-white uppercase tracking-wider", rolling ? "text-zinc-600 blur-sm" : "text-white")}>
+               {rolling ? "???" : playerName}
+             </CardTitle>
           )}
         </CardHeader>
 

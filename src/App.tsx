@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { AgentCard } from '@/components/AgentCard';
 import { RoleSelector } from '@/components/RoleSelector';
 import { Button } from '@/components/ui/button';
@@ -37,6 +37,7 @@ function App() {
   const [assignmentsByIndex, setAssignmentsByIndex] = useState<Record<number, Agent | null>>({});
   const [revealIndex, setRevealIndex] = useState<number>(-1); // -1 = not revealing, 0+ = revealing up to this index
   const [showVictory, setShowVictory] = useState(false);
+  const [shuffledPlayerOrder, setShuffledPlayerOrder] = useState<number[]>([]);
 
   // Sound manager
   const { playRoll, stopRoll, playReveal, playVictory, playLock, isMuted, toggleMute } = useSoundManager();
@@ -49,7 +50,12 @@ function App() {
         friends.forEach((_, i) => initial[i] = null);
         return initial;
     });
-  }, [friends]); 
+    
+    // Initialize shuffled player order
+    if (shuffledPlayerOrder.length === 0) {
+      setShuffledPlayerOrder(friends.map((_, i) => i));
+    }
+  }, [friends, shuffledPlayerOrder.length]); 
 
   const handleRollSafe = () => {
     if (isRolling) return;
@@ -62,8 +68,26 @@ function App() {
     setRevealIndex(-1); // Reset reveal
     setShowVictory(false); // Hide victory screen
 
+    // Initial shuffle for display
+    let currentShuffledOrder = friends.map((_, index) => index).sort(() => 0.5 - Math.random());
+    setShuffledPlayerOrder(currentShuffledOrder);
+    
+    // Shuffle player order multiple times during animation with optimized timing
+    let shuffleCount = 0;
+    const shuffleInterval = setInterval(() => {
+      if (shuffleCount < 3) {
+        // Use requestAnimationFrame for smoother updates
+        requestAnimationFrame(() => {
+          currentShuffledOrder = friends.map((_, index) => index).sort(() => 0.5 - Math.random());
+          setShuffledPlayerOrder([...currentShuffledOrder]);
+        });
+        shuffleCount++;
+      }
+    }, 700); // Optimized timing for smooth transitions
+    
     const interval = setInterval(() => {
        const temp: Record<number, Agent> = {};
+       // Show random agents during rolling animation
        friends.forEach((_, index) => {
           temp[index] = AGENTS[Math.floor(Math.random() * AGENTS.length)];
        });
@@ -72,7 +96,12 @@ function App() {
 
     setTimeout(() => {
       clearInterval(interval);
+      clearInterval(shuffleInterval);
       setRevealIndex(-1); // Reset reveal before calculating final
+      
+      // Final shuffle for the actual result
+      const finalShuffledOrder = friends.map((_, index) => index).sort(() => 0.5 - Math.random());
+      setShuffledPlayerOrder(finalShuffledOrder);
       
       const final: Record<number, Agent> = {};
       const assignedIndices = new Set<number>();
@@ -192,17 +221,21 @@ function App() {
          }
       }
 
-      // 4. Shuffle the Required Pool
+      // 4. Shuffle the Required Pool and create final player-agent assignments
       const shuffledPool = [...requiredPool].sort(() => 0.5 - Math.random());
       
-      // 5. Assign
+      // Create shuffled player indices for final assignment
+      const unassignedPlayerIndices = friends
+        .map((_, index) => index)
+        .filter(index => !assignedIndices.has(index))
+        .sort(() => 0.5 - Math.random()); // Shuffle player order
+      
+      // 5. Assign agents to shuffled players
       let poolIndex = 0;
-      friends.forEach((_, index) => {
-          if (!assignedIndices.has(index)) {
-              if (shuffledPool[poolIndex]) {
-                  final[index] = shuffledPool[poolIndex];
-                  poolIndex++;
-              }
+      unassignedPlayerIndices.forEach((playerIndex) => {
+          if (shuffledPool[poolIndex]) {
+              final[playerIndex] = shuffledPool[poolIndex];
+              poolIndex++;
           }
       });
 
@@ -210,19 +243,22 @@ function App() {
       setIsRolling(false);
       stopRoll(); // Stop drum roll
       
-      // Staggered reveal from left to right
-      friends.forEach((_, idx) => {
-        setTimeout(() => {
-          setRevealIndex(idx);
-          if (idx === friends.length - 1) {
-             playVictory();
-             setTimeout(() => setShowVictory(true), 500);
-          } else {
-             playReveal();
-          }
-        }, idx * 800); // Slower reveal for dramatic effect (800ms)
-      });
-    }, 2000);
+      // Optimized wait time for smooth card settling
+      setTimeout(() => {
+        // Staggered reveal with optimized timing
+        finalShuffledOrder.forEach((_, displayIndex) => {
+          setTimeout(() => {
+            setRevealIndex(displayIndex);
+            if (displayIndex === finalShuffledOrder.length - 1) {
+               playVictory();
+               setTimeout(() => setShowVictory(true), 400);
+            } else {
+               playReveal();
+            }
+          }, displayIndex * 400); // Optimized reveal timing
+        });
+      }, 1000); // Optimal wait time for cards to settle
+    }, 2500); // Extended total time for smoother overall experience
   };
 
   const handleStatusChange = (index: number, newStatus: 'MVP' | 'BOTTOM' | null) => {
@@ -406,6 +442,7 @@ function App() {
           players={friends} 
           assignments={assignmentsByIndex} 
 		  playerStatuses={playerStatuses}
+          shuffledOrder={shuffledPlayerOrder}
           onPlayAgain={() => {
             setShowVictory(false);
             handleRollSafe();
@@ -413,26 +450,56 @@ function App() {
           onClose={() => setShowVictory(false)}
         />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 justify-items-center">
-          {friends.map((friend, index) => (
-            <ErrorBoundary key={`boundary-${index}`}>
-              <AgentCard 
-                key={`agent-${index}`} 
-                playerName={friend}
-                agent={revealIndex >= index ? assignmentsByIndex[index] : null}
-                rolling={isRolling || (revealIndex < index && assignmentsByIndex[index] !== undefined && assignmentsByIndex[index] !== null)}
-                canEdit={editMode}
-                onEditName={(name) => updateName(index, name)}
-                className="w-full max-w-[300px]"
-                status={playerStatuses[index] || null}
-                onStatusChange={(status) => handleStatusChange(index, status)}
-                mvpRole={mvpRoleChoices[index] || null}
-                onMvpRoleChange={(role) => setMvpRoleChoices(prev => ({ ...prev, [index]: role }))}
-                onClearName={() => clearName(index)}
-              />
-            </ErrorBoundary>
-          ))}
-        </div>
+        <AnimatePresence mode="wait">
+          <motion.div 
+            key={shuffledPlayerOrder.join('-')}
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 justify-items-center"
+            style={{ willChange: 'transform, opacity' }}
+            initial={{ opacity: 0.9 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0.9 }}
+            transition={{ 
+              duration: 0.3, 
+              ease: [0.25, 0.46, 0.45, 0.94] // Custom cubic-bezier for smoothness
+            }}
+          >
+            {shuffledPlayerOrder.map((originalIndex, displayIndex) => (
+              <ErrorBoundary key={`boundary-${originalIndex}`}>
+                <motion.div
+                  layoutId={`card-${originalIndex}`}
+                  style={{ 
+                    willChange: 'transform',
+                    transformOrigin: 'top left'
+                  }}
+                  transition={{ 
+                    type: "spring", 
+                    stiffness: 120,  // Reduced for smoother motion
+                    damping: 20,     // Increased for less bounce
+                    mass: 0.5,       // Lighter feel
+                    restDelta: 0.01, // More precise stopping
+                    restSpeed: 0.01  // Smoother ending
+                  }}
+                  className="w-full max-w-[300px]"
+                >
+                  <AgentCard 
+                    key={`agent-${originalIndex}`} 
+                    playerName={friends[originalIndex]}
+                    agent={revealIndex >= displayIndex ? assignmentsByIndex[originalIndex] : null}
+                    rolling={isRolling || (revealIndex < displayIndex && assignmentsByIndex[originalIndex] !== undefined && assignmentsByIndex[originalIndex] !== null)}
+                    canEdit={editMode}
+                    onEditName={(name) => updateName(originalIndex, name)}
+                    className="w-full"
+                    status={playerStatuses[originalIndex] || null}
+                    onStatusChange={(status) => handleStatusChange(originalIndex, status)}
+                    mvpRole={mvpRoleChoices[originalIndex] || null}
+                    onMvpRoleChange={(role) => setMvpRoleChoices(prev => ({ ...prev, [originalIndex]: role }))}
+                    onClearName={() => clearName(originalIndex)}
+                  />
+                </motion.div>
+              </ErrorBoundary>
+            ))}
+          </motion.div>
+        </AnimatePresence>
         
         {editMode && (
           <div className="flex justify-center mt-12 gap-4">

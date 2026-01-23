@@ -212,3 +212,24 @@
     transform-style: preserve-3d;
   }
 }
+/* Performance optimizations for smooth animations */
+.will-change-transform {
+  will-change: transform;
+}
+
+.backface-visibility-hidden {
+  backface-visibility: hidden;
+}
+
+.transform-gpu {
+  transform: translateZ(0);
+}
+
+/* Smooth scrolling and reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -9,6 +9,7 @@ interface VictoryScreenProps {
   readonly players: string[];
   readonly assignments: Record<number, Agent | null>;
   readonly playerStatuses: Record<number, 'MVP' | 'BOTTOM' | null>;
+  readonly shuffledOrder?: number[];
   readonly onPlayAgain: () => void;
   readonly onClose: () => void;
 }
@@ -55,6 +56,7 @@ export function VictoryScreen({
   players, 
   assignments, 
   playerStatuses,
+  shuffledOrder = [],
   onPlayAgain, 
   onClose 
 }: VictoryScreenProps) {
@@ -161,7 +163,6 @@ export function VictoryScreen({
               ))}
             </motion.div>
 
-            {/* Player assignments */}
             {/* Player assignments - Large Card Layout */}
             <motion.div
               initial={{ opacity: 0 }}
@@ -169,16 +170,17 @@ export function VictoryScreen({
               transition={{ delay: 0.5 }}
               className="flex flex-wrap justify-center gap-4 mb-8"
             >
-              {players.map((player, index) => {
-                const agent = assignments[index];
-                const status = playerStatuses ? playerStatuses[index] : null;
+              {(shuffledOrder.length > 0 ? shuffledOrder : players.map((_, i) => i)).map((originalIndex, displayIndex) => {
+                const player = players[originalIndex];
+                const agent = assignments[originalIndex];
+                const status = playerStatuses ? playerStatuses[originalIndex] : null;
                 
                 return (
                   <motion.div
-                    key={index}
+                    key={originalIndex}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.6 + index * 0.1 }}
+                    transition={{ delay: 0.6 + displayIndex * 0.1 }}
                     className={`relative w-40 h-64 flex flex-col items-center justify-between p-2 pt-4 rounded-lg border-2 bg-zinc-900/80 group hover:scale-105 transition-transform duration-300 ${
                       status === 'MVP' 
                         ? 'border-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.3)]' 
