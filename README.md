@@ -9,6 +9,7 @@ Valomize Randomizer is a premium Valorant agent randomizer built for teams who w
 - **Player Constraints**:
   - **MVP**: Can be assigned a specific role or left random.
   - **Bottom**: Forced to play Duelist (or other configured punishments).
+- **Map Meta Support**: Select a map to prioritize agents that are currently "meta" for that specific map (2025-2026 season).
 - **Editable Players**: Add up to 5 players with custom names.
 - **Premium UI**: Fully responsive, animated, and styled to match the Valorant aesthetic.
 
@@ -58,6 +59,7 @@ Valomize Randomizer คือระบบสุ่มเอเจนท์ Valor
 - **ข้อจำกัดผู้เล่น (Player Constraints)**:
   - **MVP**: สามารถเลือกบทบาทที่ต้องการได้ หรือจะสุ่มตามปกติ
   - **Bottom (ที่โหล่)**: บังคับให้เล่น Duelist (หรือบทบาทอื่นๆ ตามที่ตั้งค่า)
+- **รองรับ Map Meta**: เลือกด่านที่ต้องการเพื่อสุ่มตัวละครที่เป็น Meta สำหรับด่านนั้นๆ (ซีซั่น 2025-2026)
 - **จัดการผู้เล่น**: เพิ่มผู้เล่นได้สูงสุด 5 คน พร้อมเปลี่ยนชื่อได้ตามต้องการ
 - **UI ระดับพรีเมียม**: รองรับการใช้งานทุกหน้าจอ (Responsive) พร้อมแอนิเมชันที่ลื่นไหลตามธีม Valorant
 

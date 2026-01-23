@@ -1,17 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { AgentCard } from '@/components/AgentCard';
 import { RoleSelector } from '@/components/RoleSelector';
 import { Button } from '@/components/ui/button';
-import { AGENTS, DEFAULT_FRIENDS, type Agent, type Role } from '@/data/valorant';
-import { Shuffle, RefreshCw, UserCog, Settings2 } from 'lucide-react';
+import { AGENTS, DEFAULT_FRIENDS, type Agent, type Role, type ValorantMap, MAP_META, MAP_ROLE_COMPOSITION } from '@/data/valorant';
+import { Shuffle, RefreshCw, UserCog, Settings2, Map as MapIcon } from 'lucide-react';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { useLocalStorage } from '@/hooks/useLocalStorage';
 import jettLogo from '@/assets/jett_logo.png';
 
+const MapSelector = lazy(() => import('@/components/MapSelector').then(module => ({ default: module.MapSelector })));
+
 function App() {
-  const [friends, setFriends] = useState<string[]>(DEFAULT_FRIENDS);
+  const [friends, setFriends] = useLocalStorage<string[]>('valorant-friends', DEFAULT_FRIENDS);
   const [isRolling, setIsRolling] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showMapSelector, setShowMapSelector] = useState(false);
+  const [selectedMap, setSelectedMap] = useLocalStorage<ValorantMap | null>('valorant-selected-map', null);
 
   // New State for optional features
   const [playerStatuses, setPlayerStatuses] = useState<Record<number, 'MVP' | 'BOTTOM' | null>>({});
@@ -59,21 +65,28 @@ function App() {
       const assignedIndices = new Set<number>();
       const usedAgentNames = new Set<string>();
       
-      // Track which roles are "capped" (user specified a number > 0)
-      // If a role is capped, we try NOT to pick it in the random fill step.
-      const cappedRoles = new Set<Role>();
-      Object.entries(rolesCount).forEach(([r, count]) => {
-          if (count > 0) cappedRoles.add(r as Role);
-      });
+      // Determine agent pool based on map meta
+      const currentPool = selectedMap 
+          ? AGENTS.filter(a => new Set(MAP_META[selectedMap]).has(a.name))
+          : AGENTS;
 
-      const remainingRoleCounts = { ...rolesCount };
-
-      const pickAgent = (role: Role, excludeNames: Set<string>): Agent | null => {
-          const candidates = AGENTS.filter(a => a.role === role && !excludeNames.has(a.name));
-          if (candidates.length > 0) {
-              return candidates[Math.floor(Math.random() * candidates.length)];
+      // Get role requirements from map composition or user settings
+      const roleRequirements: Record<Role, number> = selectedMap 
+          ? {
+              'Duelist': MAP_ROLE_COMPOSITION[selectedMap].duelists,
+              'Controller': MAP_ROLE_COMPOSITION[selectedMap].controllers,
+              'Initiator': MAP_ROLE_COMPOSITION[selectedMap].initiators,
+              'Sentinel': MAP_ROLE_COMPOSITION[selectedMap].sentinels
           }
-          return null;
+          : rolesCount;
+
+      const remainingRoleCounts = { ...roleRequirements };
+
+      const pickAgent = (role: Role, excludeNames: Set<string>, pool: Agent[]): Agent | null => {
+          const candidates = pool.filter(a => a.role === role && !excludeNames.has(a.name));
+          return candidates.length > 0 
+              ? candidates[Math.floor(Math.random() * candidates.length)]
+              : null;
       };
 
       // 1. Handle Forced Assignments (MVP / Bottom)
@@ -88,9 +101,15 @@ function App() {
           }
 
           if (roleToForce) {
-              // Try to pick unique first
-              let agent = pickAgent(roleToForce, usedAgentNames);
-              // If no unique left (unlikely), pick any
+              // Try to pick unique from meta pool first
+              let agent = pickAgent(roleToForce, usedAgentNames, currentPool);
+              
+              // If no meta agent fits the role, fallback to all agents
+              if (!agent) {
+                  agent = pickAgent(roleToForce, usedAgentNames, AGENTS);
+              }
+
+              // Final fallback if unique exhausted
               if (!agent) {
                   const anyCandidates = AGENTS.filter(a => a.role === roleToForce);
                   agent = anyCandidates[Math.floor(Math.random() * anyCandidates.length)];
@@ -108,13 +127,19 @@ function App() {
           }
       });
 
-      // 2. Fill specific selected roles
+      // 2. Fill specific selected roles based on map requirements
       const requiredPool: Agent[] = [];
       Object.entries(remainingRoleCounts).forEach(([role, count]) => {
          const specificRole = role as Role;
          for (let i = 0; i < count; i++) {
-             // Try unique
-             let agent = pickAgent(specificRole, usedAgentNames);
+             // Try unique from meta
+             let agent = pickAgent(specificRole, usedAgentNames, currentPool);
+             
+             // Fallback to all agents
+             if (!agent) {
+                 agent = pickAgent(specificRole, usedAgentNames, AGENTS);
+             }
+
               // Fallback to any if unique exhausted
              if (!agent) {
                   const anyCandidates = AGENTS.filter(a => a.role === specificRole);
@@ -128,28 +153,25 @@ function App() {
          }
       });
 
-      // 3. Fill remaining slots
+      // 3. Fill remaining slots if any (shouldn't be needed with 5 players)
       const remainingSlotsNeeded = friends.length - assignedIndices.size - requiredPool.length;
       
       if (remainingSlotsNeeded > 0) {
-         // Filter agents: 
-         // 1. Must be unique (!usedAgentNames)
-         // 2. PREFERABLY not in cappedRoles (unless we have no choice)
+         // Try to fill from meta pool first
+         const availableMeta = currentPool.filter(a => !usedAgentNames.has(a.name));
          
-         const available = AGENTS.filter(a => !usedAgentNames.has(a.name));
+         // If meta is exhausted, fill from all available
+         const availableAll = AGENTS.filter(a => !usedAgentNames.has(a.name));
          
-         // Try to exclude capped roles
-         const nonCappedAvailable = available.filter(a => !cappedRoles.has(a.role));
-         
-         let poolSource = nonCappedAvailable.length >= remainingSlotsNeeded ? nonCappedAvailable : available;
+         const poolSource = availableMeta.length >= remainingSlotsNeeded ? availableMeta : availableAll;
          
          // Shuffle the pool source
-         poolSource = poolSource.sort(() => 0.5 - Math.random());
+         const shuffledPoolSource = [...poolSource].sort(() => 0.5 - Math.random());
          
          for (let i = 0; i < remainingSlotsNeeded; i++) {
-             if (poolSource[i]) {
-                 requiredPool.push(poolSource[i]);
-                 usedAgentNames.add(poolSource[i].name);
+             if (shuffledPoolSource[i]) {
+                 requiredPool.push(shuffledPoolSource[i]);
+                 usedAgentNames.add(shuffledPoolSource[i].name);
              } else {
                  // Absolute backup if we run out of unique agents entirely (very rare)
                  requiredPool.push(AGENTS[Math.floor(Math.random() * AGENTS.length)]);
@@ -158,7 +180,7 @@ function App() {
       }
 
       // 4. Shuffle the Required Pool
-      const shuffledPool = requiredPool.sort(() => 0.5 - Math.random());
+      const shuffledPool = [...requiredPool].sort(() => 0.5 - Math.random());
       
       // 5. Assign
       let poolIndex = 0;
@@ -210,6 +232,12 @@ function App() {
     setFriends(newFriends);
   };
 
+  const clearName = (index: number) => {
+    const newFriends = [...friends];
+    newFriends[index] = '';
+    setFriends(newFriends);
+  };
+
   return (
     <div className="min-h-screen bg-[#0f1923] text-white font-sans overflow-x-hidden relative">
       {/* Background Elements */}
@@ -243,17 +271,50 @@ function App() {
           </motion.p>
         </header>
 
+        {showMapSelector && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
+            <ErrorBoundary>
+              <Suspense fallback={
+                <div className="bg-zinc-900 border border-zinc-700 p-4 rounded-lg mb-8 max-w-4xl mx-auto">
+                  <div className="text-center text-zinc-400">Loading map selector...</div>
+                </div>
+              }>
+                <MapSelector 
+                  selectedMap={selectedMap} 
+                  onSelectMap={setSelectedMap} 
+                />
+              </Suspense>
+            </ErrorBoundary>
+          </motion.div>
+        )}
+
         {showSettings && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
-            <RoleSelector 
-              rolesCount={rolesCount} 
-              setRolesCount={setRolesCount} 
-              totalPlayers={friends.length} 
-            />
+            <ErrorBoundary>
+              <RoleSelector 
+                rolesCount={rolesCount} 
+                setRolesCount={setRolesCount} 
+                totalPlayers={friends.length} 
+              />
+            </ErrorBoundary>
           </motion.div>
         )}
 
         <div className="flex flex-wrap justify-center gap-2 md:gap-4 mb-8">
+           {/* Map Selection Toggle */}
+           <Button
+             variant="outline"
+             onClick={() => {
+               setShowMapSelector(!showMapSelector);
+               if (!showMapSelector) setShowSettings(false);
+             }}
+             className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${showMapSelector ? 'border-red-500 bg-zinc-700' : ''}`}
+             title="Map Meta Selection"
+           >
+             <MapIcon className="h-6 w-6" />
+           </Button>
+
+           {/* Main Randomize Button */}
            <Button 
              size="lg" 
              onClick={handleRollSafe} 
@@ -267,7 +328,10 @@ function App() {
            <div className="flex gap-2 h-auto">
              <Button
                variant="outline"
-               onClick={() => setShowSettings(!showSettings)}
+               onClick={() => {
+                 setShowSettings(!showSettings);
+                 if (!showSettings) setShowMapSelector(false);
+               }}
                className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${showSettings ? 'border-red-500 bg-zinc-700' : ''}`}
                title="Team Composition Settings"
              >
@@ -287,19 +351,22 @@ function App() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 justify-items-center">
           {friends.map((friend, index) => (
-            <AgentCard 
-              key={index} 
-              playerName={friend}
-              agent={revealIndex >= index ? assignmentsByIndex[index] : null}
-              rolling={isRolling || (revealIndex < index && assignmentsByIndex[index] !== undefined && assignmentsByIndex[index] !== null)}
-              canEdit={editMode}
-              onEditName={(name) => updateName(index, name)}
-              className="w-full max-w-[300px]"
-              status={playerStatuses[index] || null}
-              onStatusChange={(status) => handleStatusChange(index, status)}
-              mvpRole={mvpRoleChoices[index] || null}
-              onMvpRoleChange={(role) => setMvpRoleChoices(prev => ({ ...prev, [index]: role }))}
-            />
+            <ErrorBoundary key={`boundary-${friend}-${index}`}>
+              <AgentCard 
+                key={`agent-${friend}-${index}`} 
+                playerName={friend}
+                agent={revealIndex >= index ? assignmentsByIndex[index] : null}
+                rolling={isRolling || (revealIndex < index && assignmentsByIndex[index] !== undefined && assignmentsByIndex[index] !== null)}
+                canEdit={editMode}
+                onEditName={(name) => updateName(index, name)}
+                className="w-full max-w-[300px]"
+                status={playerStatuses[index] || null}
+                onStatusChange={(status) => handleStatusChange(index, status)}
+                mvpRole={mvpRoleChoices[index] || null}
+                onMvpRoleChange={(role) => setMvpRoleChoices(prev => ({ ...prev, [index]: role }))}
+                onClearName={() => clearName(index)}
+              />
+            </ErrorBoundary>
           ))}
         </div>
         

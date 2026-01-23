@@ -2,18 +2,20 @@ import { motion } from "framer-motion";
 import { type Agent, type Role } from "@/data/valorant";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { Zap, Shield, Target, Users, Sparkles, Star, TrendingUp, X } from "lucide-react";
 
 interface AgentCardProps {
-  playerName: string;
-  agent: Agent | null;
-  rolling: boolean;
-  className?: string;
-  onEditName?: (newName: string) => void;
-  canEdit?: boolean;
-  status: 'MVP' | 'BOTTOM' | null;
-  onStatusChange: (status: 'MVP' | 'BOTTOM' | null) => void;
-  mvpRole: Role | null;
-  onMvpRoleChange: (role: Role | null) => void;
+  readonly playerName: string;
+  readonly agent: Agent | null;
+  readonly rolling: boolean;
+  readonly className?: string;
+  readonly onEditName?: (newName: string) => void;
+  readonly canEdit?: boolean;
+  readonly status: 'MVP' | 'BOTTOM' | null;
+  readonly onStatusChange: (status: 'MVP' | 'BOTTOM' | null) => void;
+  readonly mvpRole: Role | null;
+  readonly onMvpRoleChange: (role: Role | null) => void;
+  readonly onClearName?: () => void;
 }
 
 export function AgentCard({ 
@@ -26,10 +28,33 @@ export function AgentCard({
   status,
   onStatusChange,
   mvpRole,
-  onMvpRoleChange
+  onMvpRoleChange,
+  onClearName
 }: AgentCardProps) {
   // If no agent yet, showing a placeholder or waiting
   const displayAgent = agent || { name: '?', role: 'Duelist', image: '', color: '#333' };
+
+  // Get role icon
+  const getRoleIcon = (role: Role) => {
+    switch (role) {
+      case 'Duelist': return <Zap className="h-4 w-4" />;
+      case 'Controller': return <Shield className="h-4 w-4" />;
+      case 'Initiator': return <Target className="h-4 w-4" />;
+      case 'Sentinel': return <Users className="h-4 w-4" />;
+      default: return <Sparkles className="h-4 w-4" />;
+    }
+  };
+
+  // Get role color
+  const getRoleColor = (role: Role) => {
+    switch (role) {
+      case 'Duelist': return 'text-red-400';
+      case 'Controller': return 'text-purple-400';
+      case 'Initiator': return 'text-green-400';
+      case 'Sentinel': return 'text-yellow-400';
+      default: return 'text-zinc-400';
+    }
+  };
 
   return (
     <motion.div
@@ -39,7 +64,7 @@ export function AgentCard({
       animate={{ scale: 1, opacity: 1 }}
     >
       <Card className={cn(
-        "overflow-hidden border-2 bg-zinc-900 border-zinc-800 relative h-96 flex flex-col items-center justify-between shadow-lg transition-all duration-300 hover:border-red-500 hover:shadow-red-500/20",
+        "overflow-hidden border-2 bg-zinc-900 border-zinc-800 relative h-96 flex flex-col items-center justify-between shadow-lg transition-all duration-300 hover:border-red-500 hover:shadow-red-500/20 hover:scale-[1.02] hover:-translate-y-1",
         status === 'MVP' && "border-yellow-500 shadow-yellow-500/20",
         status === 'BOTTOM' && "border-blue-900 shadow-blue-900/20 opacity-90"
       )}>
@@ -63,23 +88,38 @@ export function AgentCard({
         <CardHeader className="z-10 w-full text-center pb-2">
           {canEdit ? (
              <div className="flex flex-col gap-2">
-               <input 
-                 className="bg-transparent border-b border-white/20 text-center text-xl font-bold text-white focus:outline-none focus:border-red-500 w-full"
-                 value={playerName}
-                 onChange={(e) => onEditName && onEditName(e.target.value)}
-               />
+               <div className="relative flex items-center justify-center">
+                 <input 
+                   className="bg-transparent border-b border-white/20 text-center text-xl font-bold text-white focus:outline-none focus:border-red-500 w-full pr-8"
+                   value={playerName}
+                   onChange={(e) => onEditName?.(e.target.value)}
+                 />
+                 {onClearName && (
+                   <button
+                     onClick={onClearName}
+                     className="absolute right-0 text-red-500 hover:text-red-400 transition-colors"
+                     aria-label={`Clear ${playerName} name`}
+                   >
+                     <X className="h-4 w-4" />
+                   </button>
+                 )}
+               </div>
                
                {/* MVP / Bottom Selector */}
                <div className="flex justify-center gap-2 mt-2">
                   <button 
                     onClick={() => onStatusChange(status === 'MVP' ? null : 'MVP')}
                     className={cn("px-2 py-1 rounded text-xs font-bold border transition-colors", status === 'MVP' ? "bg-yellow-500 text-black border-yellow-500" : "bg-transparent text-yellow-500 border-yellow-500/50 hover:bg-yellow-500/10")}
+                    aria-label={status === 'MVP' ? 'Remove MVP status' : 'Set as MVP'}
+                    aria-pressed={status === 'MVP'}
                   >
                     MVP
                   </button>
                   <button 
                     onClick={() => onStatusChange(status === 'BOTTOM' ? null : 'BOTTOM')}
                     className={cn("px-2 py-1 rounded text-xs font-bold border transition-colors", status === 'BOTTOM' ? "bg-blue-900 text-white border-blue-900" : "bg-transparent text-blue-400 border-blue-900/50 hover:bg-blue-900/20")}
+                    aria-label={status === 'BOTTOM' ? 'Remove Bottom status' : 'Set as Bottom'}
+                    aria-pressed={status === 'BOTTOM'}
                   >
                     BTM
                   </button>
@@ -91,6 +131,7 @@ export function AgentCard({
                     value={mvpRole || ''} 
                     onChange={(e) => onMvpRoleChange(e.target.value as Role)}
                     className="bg-zinc-800 text-white text-xs p-1 rounded border border-zinc-700 focus:outline-none mt-1"
+                    aria-label="Select MVP role"
                   >
                     <option value="">Any Role</option>
                     <option value="Duelist">Duelist</option>
@@ -107,7 +148,7 @@ export function AgentCard({
 
         <CardContent className="z-10 flex flex-col items-center justify-center flex-1 w-full gap-4">
           <div className="relative w-32 h-32 md:w-40 md:h-40 flex items-center justify-center">
-            {rolling ? (
+            {rolling && (
               <motion.div 
                 className="text-4xl font-bold text-white/50"
                 animate={{ opacity: [0.5, 1, 0.5], scale: [0.9, 1.1, 0.9] }}
@@ -115,7 +156,8 @@ export function AgentCard({
               >
                 ROLLING
               </motion.div>
-            ) : agent ? (
+            )}
+            {!rolling && agent && (
                <motion.img 
                  src={agent.image} 
                  alt={agent.name}
@@ -124,7 +166,8 @@ export function AgentCard({
                  transition={{ type: "spring", stiffness: 200, damping: 15 }}
                  className="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]"
                />
-            ) : (
+            )}
+            {!rolling && !agent && (
                 <div className="text-6xl text-zinc-700">?</div>
             )}
           </div>
@@ -134,9 +177,31 @@ export function AgentCard({
                {agent ? agent.name : "???"}
             </h2>
             {agent && (
-               <span className="text-xs uppercase tracking-widest text-zinc-400 border border-zinc-700 px-2 py-0.5 rounded-full mt-1 bg-zinc-950/50">
-                 {agent.role}
-               </span>
+               <div className="flex flex-col items-center gap-2 mt-2">
+                 {/* Role with icon */}
+                 <div className={cn("flex items-center gap-1", getRoleColor(agent.role))}>
+                   {getRoleIcon(agent.role)}
+                   <span className="text-xs uppercase tracking-widest border border-zinc-700 px-2 py-0.5 rounded-full bg-zinc-950/50">
+                     {agent.role}
+                   </span>
+                 </div>
+                 
+                 {/* Stats */}
+                 <div className="flex items-center gap-3 text-[10px] text-zinc-500">
+                   {agent.difficulty && (
+                     <div className="flex items-center gap-1">
+                       <Star className="h-3 w-3" />
+                       <span>{agent.difficulty}</span>
+                     </div>
+                   )}
+                   {agent.pickRate && (
+                     <div className="flex items-center gap-1">
+                       <TrendingUp className="h-3 w-3" />
+                       <span>{agent.pickRate}%</span>
+                     </div>
+                   )}
+                 </div>
+               </div>
             )}
           </div>
         </CardContent>
