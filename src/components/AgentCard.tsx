@@ -1,9 +1,11 @@
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { type Agent, type Role } from "@/data/valorant";
+import { type AgentStrategyProfile } from "@/data/meta";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { LazyImage } from "@/components/LazyImage";
-import { Zap, Shield, Target, Users, Sparkles, Star, TrendingUp, X } from "lucide-react";
+import { Zap, Shield, Target, Users, Sparkles, Star, TrendingUp, TrendingDown, Minus, X, Info } from "lucide-react";
+import { useState } from "react";
 
 // Type alias for player status
 type PlayerStatus = 'MVP' | 'BOTTOM' | null;
@@ -29,6 +31,23 @@ const getRoleColor = (role: Role) => {
   return colors[role] || 'text-gray-400';
 };
 
+const getTierColor = (tier: string) => {
+  switch(tier) {
+    case 'S': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50';
+    case 'A': return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50';
+    case 'B': return 'bg-blue-500/20 text-blue-400 border-blue-500/50';
+    default: return 'bg-zinc-800 text-zinc-400';
+  }
+};
+
+const getTrendIcon = (trend: string) => {
+  switch(trend) {
+    case 'Rising': return <TrendingUp className="h-3 w-3 text-green-400" />;
+    case 'Falling': return <TrendingDown className="h-3 w-3 text-red-400" />;
+    default: return <Minus className="h-3 w-3 text-yellow-400" />;
+  }
+};
+
 const getCardClasses = (rolling: boolean, status: PlayerStatus, className?: string) => {
   return cn(
     "overflow-hidden border-2 bg-zinc-900 border-zinc-800 relative h-96 flex flex-col items-center justify-between shadow-lg transition-all duration-300",
@@ -49,6 +68,19 @@ const renderStatusBadge = (status: PlayerStatus, canEdit: boolean, rolling: bool
       status === 'MVP' ? "bg-yellow-500 text-black" : "bg-blue-900 text-blue-200"
     )}>
       {status === 'MVP' ? 'MVP' : 'BOTTOM FRAG'}
+    </div>
+  );
+};
+
+const renderTierBadge = (profile: AgentStrategyProfile | undefined, rolling: boolean) => {
+  if (!profile || rolling) return null;
+  
+  return (
+    <div className={cn(
+      "absolute top-2 left-2 px-2 py-0.5 rounded text-[10px] font-bold uppercase z-20 border backdrop-blur-sm flex items-center gap-1",
+      getTierColor(profile.tier)
+    )}>
+      <span>TIER {profile.tier}</span>
     </div>
   );
 };
@@ -130,6 +162,7 @@ interface AgentCardProps {
   readonly mvpRole: Role | null;
   readonly onMvpRoleChange: (role: Role | null) => void;
   readonly onClearName?: () => void;
+  readonly strategyProfile?: AgentStrategyProfile;
 }
 
 export function AgentCard({ 
@@ -143,10 +176,12 @@ export function AgentCard({
   onStatusChange,
   mvpRole,
   onMvpRoleChange,
-  onClearName
+  onClearName,
+  strategyProfile
 }: AgentCardProps) {
   // If no agent yet, showing a placeholder or waiting
   const displayAgent = agent || { name: '?', role: 'Duelist', image: '', color: '#333' };
+  const [showInfo, setShowInfo] = useState(false);
 
   return (
     <motion.div
@@ -164,6 +199,9 @@ export function AgentCard({
         damping: 25,
         mass: 0.4
       }}
+      onMouseEnter={() => setShowInfo(true)}
+      onMouseLeave={() => setShowInfo(false)}
+      onClick={() => !rolling && setShowInfo(!showInfo)}
     >
       <Card className={getCardClasses(rolling, status, className)}>
         
@@ -198,6 +236,7 @@ export function AgentCard({
 
         {/* Status Indicator Badge */}
         {renderStatusBadge(status, canEdit || false, rolling)}
+        {renderTierBadge(strategyProfile, rolling)}
 
         <CardHeader className="z-10 w-full text-center pb-2">
           {canEdit ? (
@@ -209,25 +248,57 @@ export function AgentCard({
           )}
         </CardHeader>
 
-        <CardContent className="z-10 flex flex-col items-center justify-center flex-1 w-full gap-4">
-          <div className="relative w-32 h-32 md:w-40 md:h-40 flex items-center justify-center">
-            
-            {!rolling && agent && (
-               <div className="animate-flip-in w-full h-full relative">
-                 <LazyImage
-                   src={agent.image} 
-                   alt={agent.name}
-                   className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(255,255,255,0.4)]"
-                   placeholder="Loading..."
-                 />
-                 {/* Shine effect overlay */}
-                 <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/30 to-transparent opacity-0 animate-[shine_0.5s_ease-out_0.2s_forwards] pointer-events-none" />
-               </div>
+        <CardContent className="z-10 flex flex-col items-center justify-center flex-1 w-full gap-4 relative overflow-hidden">
+          <AnimatePresence>
+            {showInfo && strategyProfile && !rolling && !canEdit ? (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                className="absolute inset-0 bg-zinc-950/90 backdrop-blur-md p-4 flex flex-col items-center justify-center text-center gap-3 z-30"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Info className="h-4 w-4 text-red-500" />
+                  <span className="text-sm font-bold uppercase text-red-400">Strategic Intel</span>
+                </div>
+                <p className="text-xs text-zinc-300 leading-relaxed max-w-[90%]">
+                  {strategyProfile.strategicReasoning}
+                </p>
+                {strategyProfile.keyInteractions && strategyProfile.keyInteractions.length > 0 && (
+                  <div className="w-full mt-2">
+                    <p className="text-[10px] uppercase font-bold text-zinc-500 mb-1">Key Combos & Synergies</p>
+                    <ul className="text-[10px] text-zinc-400 space-y-1">
+                      {strategyProfile.keyInteractions.map((int, i) => (
+                        <li key={`${int}-${i}`} className="flex items-center justify-center gap-1">
+                          <span className="w-1 h-1 bg-red-500 rounded-full" />
+                          {int}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </motion.div>
+            ) : (
+              <div className="relative w-32 h-32 md:w-40 md:h-40 flex items-center justify-center">
+              
+                {!rolling && agent && (
+                   <div className="animate-flip-in w-full h-full relative">
+                     <LazyImage
+                       src={agent.image} 
+                       alt={agent.name}
+                       className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(255,255,255,0.4)]"
+                       placeholder="Loading..."
+                     />
+                     {/* Shine effect overlay */}
+                     <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/30 to-transparent opacity-0 animate-[shine_0.5s_ease-out_0.2s_forwards] pointer-events-none" />
+                   </div>
+                )}
+                {!rolling && !agent && (
+                    <div className="text-6xl text-zinc-700">?</div>
+                )}
+              </div>
             )}
-            {!rolling && !agent && (
-                <div className="text-6xl text-zinc-700">?</div>
-            )}
-          </div>
+          </AnimatePresence>
           
           <div className="flex flex-col items-center">
             <h2 className={cn("text-2xl font-black uppercase italic tracking-tighter", rolling ? "text-zinc-600 blur-sm" : "text-white")}>
@@ -244,7 +315,7 @@ export function AgentCard({
                  </div>
                  
                  {/* Stats */}
-                 <div className="flex items-center gap-3 text-[10px] text-zinc-500">
+                 <div className="flex items-center gap-3 text-[10px] text-zinc-500 bg-zinc-950/30 px-2 py-1 rounded-full border border-white/5">
                    {agent.difficulty && (
                      <div className="flex items-center gap-1">
                        <Star className="h-3 w-3" />
@@ -255,6 +326,12 @@ export function AgentCard({
                      <div className="flex items-center gap-1">
                        <TrendingUp className="h-3 w-3" />
                        <span>{agent.pickRate}%</span>
+                     </div>
+                   )}
+                   {strategyProfile && (
+                     <div className="flex items-center gap-1 ml-1 pl-2 border-l border-zinc-700 text-zinc-300">
+                        {getTrendIcon(strategyProfile.pickRateTrend)}
+                        <span>{strategyProfile.pickRateTrend}</span>
                      </div>
                    )}
                  </div>

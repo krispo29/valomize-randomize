@@ -4,6 +4,7 @@ import { AgentCard } from '@/components/AgentCard';
 import { RoleSelector } from '@/components/RoleSelector';
 import { Button } from '@/components/ui/button';
 import { AGENTS, DEFAULT_FRIENDS, type Agent, type Role, type ValorantMap, MAP_META, MAP_ROLE_COMPOSITION } from '@/data/valorant';
+import { valorantMeta2026, type AgentStrategyProfile } from '@/data/meta';
 import { Shuffle, UserCog, Settings2, Map as MapIcon, Volume2, VolumeX } from 'lucide-react';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
@@ -104,7 +105,7 @@ function App() {
 
           if (roleToForce) {
               let agent = pickAgent(roleToForce, usedAgentNames, currentPool);
-              if (!agent) agent = pickAgent(roleToForce, usedAgentNames, AGENTS);
+              agent ??= pickAgent(roleToForce, usedAgentNames, AGENTS);
               
               if (agent) {
                   final[index] = agent;
@@ -121,7 +122,7 @@ function App() {
          const specificRole = role as Role;
          for (let i = 0; i < count; i++) {
              let agent = pickAgent(specificRole, usedAgentNames, currentPool);
-             if (!agent) agent = pickAgent(specificRole, usedAgentNames, AGENTS);
+             agent ??= pickAgent(specificRole, usedAgentNames, AGENTS);
              if (!agent) {
                   const anyCandidates = AGENTS.filter(a => a.role === specificRole);
                   agent = anyCandidates[Math.floor(Math.random() * anyCandidates.length)];
@@ -317,6 +318,35 @@ function App() {
                 </motion.div>
                 )}
 
+                {/* Map Meta Info Display - ONLY when a map is selected */}
+                {selectedMap && (
+                    <motion.div 
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        className="w-full flex justify-center mb-6 -mt-2"
+                    >
+                        {(() => {
+                           const mapMeta = valorantMeta2026.find(m => m.mapName === selectedMap);
+                           if (!mapMeta) return null;
+                           return (
+                               <div className="flex flex-col md:flex-row items-center gap-3 md:gap-8 px-6 py-2 bg-gradient-to-r from-transparent via-zinc-900/80 to-transparent border-t border-b border-white/5 backdrop-blur-sm">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Archetype</span>
+                                        <span className="text-xs text-red-400 font-bold uppercase tracking-wider">{mapMeta.metaArchetype}</span>
+                                    </div>
+                                    
+                                    <div className="hidden md:block w-px h-3 bg-zinc-700/50" />
+
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Topography</span>
+                                        <span className="text-xs text-zinc-300 uppercase tracking-wider">{mapMeta.topographyType}</span>
+                                    </div>
+                               </div>
+                           );
+                        })()}
+                    </motion.div>
+                )}
+
                 {/* Buttons */}
                 <div className="flex flex-wrap justify-center gap-2 md:gap-4">
                     <Button
@@ -410,6 +440,19 @@ function App() {
                     const isInGrid = gridIndices.includes(index);
                     const isRevealed = revealedIndices.has(index);
                     const isFaceDown = phase === 'GATHERING' || phase === 'SHUFFLING' || (phase === 'DEALING' && !isRevealed);
+                    const assignedAgent = assignmentsByIndex[index];
+
+                    // Find Strategy Profile
+                    let strategyProfile: AgentStrategyProfile | undefined = undefined;
+                    if (selectedMap && assignedAgent) {
+                        const mapMeta = valorantMeta2026.find(m => m.mapName === selectedMap);
+                        if (mapMeta && mapMeta.roleComposition) {
+                            const roleProfiles = mapMeta.roleComposition[assignedAgent.role];
+                            if (roleProfiles) {
+                                strategyProfile = roleProfiles.find(p => p.name === assignedAgent.name);
+                            }
+                        }
+                    }
 
                     return (
                         <div key={`slot-${index}`} className="w-full max-w-[300px] h-[384px] relative border border-white/5 rounded-lg bg-white/5 flex items-center justify-center">
@@ -429,7 +472,7 @@ function App() {
                                 >
                                     <AgentCard 
                                         playerName={friendName}
-                                        agent={assignmentsByIndex[index] || null}
+                                        agent={assignedAgent || null}
                                         rolling={isFaceDown} 
                                         canEdit={editMode}
                                         onEditName={(n) => {
@@ -446,6 +489,7 @@ function App() {
                                             newF[index] = '';
                                             setFriends(newF);
                                         }}
+                                        strategyProfile={strategyProfile}
                                     />
                                 </motion.div>
                             )}
