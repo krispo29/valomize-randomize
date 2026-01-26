@@ -354,6 +354,7 @@ function App() {
                         onClick={() => { setShowMapSelector(!showMapSelector); if (!showMapSelector) setShowSettings(false); }}
                         className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${(showMapSelector || selectedMap) ? 'border-red-500 bg-zinc-700' : ''}`}
                         title="Map Meta Selection"
+                        aria-label={showMapSelector ? "Hide map selector" : "Show map selector"}
                     >
                         <MapIcon className={`h-6 w-6 ${selectedMap ? 'text-red-400' : ''}`} />
                     </Button>
@@ -372,6 +373,7 @@ function App() {
                             variant="outline"
                             onClick={toggleMute}
                             className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto min-w-[3.5rem] ${isMuted ? 'opacity-50' : ''}`}
+                            aria-label={isMuted ? "Unmute sound" : "Mute sound"}
                         >
                             {isMuted ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
                         </Button>
@@ -381,6 +383,7 @@ function App() {
                             onClick={() => { setShowSettings(!showSettings); if (!showSettings) setShowMapSelector(false); }}
                             disabled={!!selectedMap}
                             className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${showSettings ? 'border-red-500 bg-zinc-700' : ''} ${selectedMap ? 'opacity-50' : ''}`}
+                            aria-label={showSettings ? "Hide settings" : "Show settings"}
                         >
                             <Settings2 className="h-6 w-6" />
                         </Button>
@@ -389,6 +392,7 @@ function App() {
                             variant="outline"
                             onClick={() => setEditMode(!editMode)}
                             className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${editMode ? 'border-red-500 bg-zinc-700' : ''}`}
+                            aria-label={editMode ? "Disable edit mode" : "Enable edit mode"}
                         >
                             <UserCog className="h-6 w-6" />
                         </Button>
