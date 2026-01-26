@@ -490,6 +490,11 @@ function App() {
                                             setFriends(newF);
                                         }}
                                         strategyProfile={strategyProfile}
+                                        activeSynergies={
+                                            strategyProfile?.synergies?.filter(
+                                                syn => Object.values(assignmentsByIndex).some(a => a?.name === syn)
+                                            )
+                                        }
                                     />
                                 </motion.div>
                             )}

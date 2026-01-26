@@ -6,9 +6,10 @@ export type PickRateTrend = 'Rising' | 'Stable' | 'Falling';
 export interface AgentStrategyProfile {
   name: string;
   tier: TierRank;
-  pickRateTrend: PickRateTrend;
+  pickRateTrend?: PickRateTrend;
   strategicReasoning: string;
   keyInteractions: string[];
+  synergies?: string[];
 }
 
 export interface MapMetaConfiguration {
@@ -30,14 +31,16 @@ export const valorantMeta2026: MapMetaConfiguration[] = [
           tier: 'S',
           pickRateTrend: 'Stable',
           strategicReasoning: 'Updraft accesses vertical off-angles; Tailwind crosses jump shortcuts safely.',
-          keyInteractions: ['Hover over death drops for info', 'Operator usage on long lines']
+          keyInteractions: ['Hover over death drops for info', 'Operator usage on long lines'],
+          synergies: ['Sova', 'Omen']
         },
         {
           name: 'Neon',
           tier: 'A',
           pickRateTrend: 'Rising',
           strategicReasoning: 'Rotation speed on large map is unmatched; Slide evades shots on long bridges.',
-          keyInteractions: ['Relay Bolt on B-Site bridge', 'High Gear rotations']
+          keyInteractions: ['Relay Bolt on B-Site bridge', 'High Gear rotations'],
+          synergies: ['Breach', 'KAY/O']
         },
         {
           name: 'Waylay',
@@ -53,21 +56,24 @@ export const valorantMeta2026: MapMetaConfiguration[] = [
           tier: 'S',
           pickRateTrend: 'Stable',
           strategicReasoning: 'High skybox allows cross-map recons; Owl Drone clears corners near death drops.',
-          keyInteractions: ['Recon Bolt from spawn', 'Hunters Fury in narrow bridges']
+          keyInteractions: ['Recon Bolt from spawn', 'Hunters Fury in narrow bridges'],
+          synergies: ['Jett', 'Deadlock']
         },
         {
           name: 'KAY/O',
           tier: 'A',
           pickRateTrend: 'Stable',
           strategicReasoning: 'Suppression causes environmental deaths for Jett/Raze over gaps.',
-          keyInteractions: ['Knife hitting Jett mid-updraft', 'Flash-pop for long range peeks']
+          keyInteractions: ['Knife hitting Jett mid-updraft', 'Flash-pop for long range peeks'],
+          synergies: ['Neon', 'Raze']
         },
         {
           name: 'Fade',
           tier: 'B',
           pickRateTrend: 'Stable',
           strategicReasoning: 'Prowlers clear library/vent areas; Nightfall covers entire B-Site.',
-          keyInteractions: ['Seize on bridge choke points']
+          keyInteractions: ['Seize on bridge choke points'],
+          synergies: ['Raze']
         }
       ],
       'Controller': [
@@ -76,7 +82,8 @@ export const valorantMeta2026: MapMetaConfiguration[] = [
           tier: 'S',
           pickRateTrend: 'Stable',
           strategicReasoning: 'Shrouded Step allows vertical movement similar to Jett; Paranoia covers A-Main lanes.',
-          keyInteractions: ['Teleport to high ground', 'One-way smokes']
+          keyInteractions: ['Teleport to high ground', 'One-way smokes'],
+          synergies: ['Jett', 'Cypher']
         },
         {
           name: 'Astra',
@@ -99,7 +106,8 @@ export const valorantMeta2026: MapMetaConfiguration[] = [
           tier: 'S',
           pickRateTrend: 'Stable',
           strategicReasoning: 'Global info passive mandatory for flank routes; Unbreakable trips on bridges.',
-          keyInteractions: ['Spycam high placements', 'Tripwires on bridge']
+          keyInteractions: ['Spycam high placements', 'Tripwires on bridge'],
+          synergies: ['Omen', 'Sova']
         },
         {
           name: 'Veto',
@@ -113,7 +121,8 @@ export const valorantMeta2026: MapMetaConfiguration[] = [
           tier: 'B',
           pickRateTrend: 'Stable',
           strategicReasoning: 'Barrier Mesh blocks narrow bridges effectively.',
-          keyInteractions: ['GravNet forcing crouch-walk', 'Wall blocking bridge']
+          keyInteractions: ['GravNet forcing crouch-walk', 'Wall blocking bridge'],
+          synergies: ['Raze', 'Sova']
         }
       ]
     }
@@ -129,14 +138,16 @@ export const valorantMeta2026: MapMetaConfiguration[] = [
           tier: 'S',
           pickRateTrend: 'Stable',
           strategicReasoning: 'Paint Shells/Boom Bot clear Hookah/Lamps corners; Satchel entry.',
-          keyInteractions: ['Showstopper in Showers', 'Nade stacking Lamps']
+          keyInteractions: ['Showstopper in Showers', 'Nade stacking Lamps'],
+          synergies: ['Fade', 'Viper']
         },
         {
           name: 'Neon',
           tier: 'A',
           pickRateTrend: 'Rising',
           strategicReasoning: 'Fast rotates via TPs; High Gear floods sites.',
-          keyInteractions: ['Slide into Hookah', 'Relay Bolt U-Hall']
+          keyInteractions: ['Slide into Hookah', 'Relay Bolt U-Hall'],
+          synergies: ['Breach', 'Skye']
         },
         {
           name: 'Phoenix',
@@ -152,7 +163,8 @@ export const valorantMeta2026: MapMetaConfiguration[] = [
           tier: 'S',
           pickRateTrend: 'Rising',
           strategicReasoning: 'Trailblazer essential for clearing Hookah; Guiding Light pop-flashes.',
-          keyInteractions: ['Dog clearing Hookah', 'Flash out of smokes']
+          keyInteractions: ['Dog clearing Hookah', 'Flash out of smokes'],
+          synergies: ['Raze', 'Viper']
         },
         {
           name: 'Gekko',
@@ -175,14 +187,16 @@ export const valorantMeta2026: MapMetaConfiguration[] = [
           tier: 'S',
           pickRateTrend: 'Stable',
           strategicReasoning: 'Instant Sky Smokes for fast rushes; Orbital Strike post-plant.',
-          keyInteractions: ['Molly lineups', 'Stim Beacon rush']
+          keyInteractions: ['Molly lineups', 'Stim Beacon rush'],
+          synergies: ['Raze', 'Gekko']
         },
         {
           name: 'Viper',
           tier: 'S',
           pickRateTrend: 'Stable',
           strategicReasoning: 'Wall cuts B site; Snake bites combo with Raze nades.',
-          keyInteractions: ['One-way on A-Short', 'Vipers Pit A-Lamps']
+          keyInteractions: ['One-way on A-Short', 'Vipers Pit A-Lamps'],
+          synergies: ['Raze', 'Skye']
         },
         {
           name: 'Omen',
@@ -198,7 +212,8 @@ export const valorantMeta2026: MapMetaConfiguration[] = [
           tier: 'S',
           pickRateTrend: 'Stable',
           strategicReasoning: 'Trips difficult to clear; Camera gives vital info.',
-          keyInteractions: ['Camera B-Hookah', 'Cage one-ways']
+          keyInteractions: ['Camera B-Hookah', 'Cage one-ways'],
+          synergies: ['Brimstone', 'Viper']
         },
         {
           name: 'Sage',

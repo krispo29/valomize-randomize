@@ -163,6 +163,7 @@ interface AgentCardProps {
   readonly onMvpRoleChange: (role: Role | null) => void;
   readonly onClearName?: () => void;
   readonly strategyProfile?: AgentStrategyProfile;
+  readonly activeSynergies?: string[];
 }
 
 export function AgentCard({ 
@@ -177,7 +178,8 @@ export function AgentCard({
   mvpRole,
   onMvpRoleChange,
   onClearName,
-  strategyProfile
+  strategyProfile,
+  activeSynergies
 }: AgentCardProps) {
   // If no agent yet, showing a placeholder or waiting
   const displayAgent = agent || { name: '?', role: 'Duelist', image: '', color: '#333' };
@@ -261,6 +263,21 @@ export function AgentCard({
                   <Info className="h-4 w-4 text-red-500" />
                   <span className="text-sm font-bold uppercase text-red-400">Strategic Intel</span>
                 </div>
+                {activeSynergies && activeSynergies.length > 0 && (
+                  <div className="w-full mt-2 p-2 bg-gradient-to-r from-purple-900/40 to-pink-900/40 border border-purple-500/30 rounded">
+                    <p className="text-[10px] uppercase font-bold text-purple-300 mb-1 flex items-center gap-1">
+                      <Zap className="h-3 w-3 fill-purple-400" />
+                      Active Squad Combo
+                    </p>
+                    <ul className="text-[10px] text-purple-200 font-medium">
+                      {activeSynergies.map((syn, i) => (
+                        <li key={i} className="flex items-center gap-1">
+                          Play with <span className="text-white font-bold">{syn}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <p className="text-xs text-zinc-300 leading-relaxed max-w-[90%]">
                   {strategyProfile.strategicReasoning}
                 </p>
@@ -328,7 +345,7 @@ export function AgentCard({
                        <span>{agent.pickRate}%</span>
                      </div>
                    )}
-                   {strategyProfile && (
+                   {strategyProfile && strategyProfile.pickRateTrend && (
                      <div className="flex items-center gap-1 ml-1 pl-2 border-l border-zinc-700 text-zinc-300">
                         {getTrendIcon(strategyProfile.pickRateTrend)}
                         <span>{strategyProfile.pickRateTrend}</span>

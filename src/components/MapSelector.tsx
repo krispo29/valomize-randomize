@@ -1,6 +1,17 @@
 import { Button } from "@/components/ui/button";
 import { type ValorantMap, MAPS, MAP_META_AGENTS, MAP_IMAGES, AGENTS } from "@/data/valorant";
+import { valorantMeta2026 } from '@/data/meta';
 import { MapPin, Users, Shield, Sword, Target, ChevronDown, ChevronUp } from "lucide-react";
+
+// Helper to get tier color
+const getTierColor = (tier: string) => {
+  switch(tier) {
+    case 'S': return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20';
+    case 'A': return 'text-green-400 bg-green-400/10 border-green-400/20';
+    case 'B': return 'text-blue-400 bg-blue-400/10 border-blue-400/20';
+    default: return 'text-zinc-500 bg-zinc-800 border-zinc-700';
+  }
+};
 
 interface MapSelectorProps {
   readonly selectedMap: ValorantMap | null;
@@ -21,12 +32,7 @@ export function MapSelector({ selectedMap, onSelectMap, isExpanded, onToggleExpa
              <Button 
                variant="ghost" 
                size="sm" 
-               onClick={() => {
-                 onSelectMap(null);
-                 // If we clear selection, we might want to ensure it stays expanded if it was deciding based on selection, 
-                 // but typically we probably just hide the summary. 
-                 // The parent will handle visibility.
-               }}
+               onClick={() => onSelectMap(null)}
                className="text-xs text-zinc-400 hover:text-white h-7"
              >
                Clear Selection
@@ -60,7 +66,6 @@ export function MapSelector({ selectedMap, onSelectMap, isExpanded, onToggleExpa
                 aria-label={`Select ${mapName} map${selectedMap === mapName ? ' (selected)' : ''}`}
                 aria-pressed={selectedMap === mapName}
               >
-                {/* Map Preview Image */}
                 <div className="absolute inset-0 opacity-20 group-hover:opacity-30 transition-opacity">
                   <img 
                     src={MAP_IMAGES[mapName]} 
@@ -71,11 +76,7 @@ export function MapSelector({ selectedMap, onSelectMap, isExpanded, onToggleExpa
                     }}
                   />
                 </div>
-                
-                {/* Map Name */}
                 <span className="relative z-10">{mapName}</span>
-                
-                {/* Selected Indicator */}
                 {selectedMap === mapName && (
                   <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-zinc-900"></div>
                 )}
@@ -88,6 +89,7 @@ export function MapSelector({ selectedMap, onSelectMap, isExpanded, onToggleExpa
               All agents available
             </p>
           )}
+
           {selectedMap && (
             <div className="mt-6 p-4 bg-zinc-800/50 rounded-lg border border-zinc-700 animate-in fade-in zoom-in-95 duration-200">
               <h4 className="text-sm font-bold text-red-400 uppercase tracking-wider mb-4">
@@ -104,6 +106,11 @@ export function MapSelector({ selectedMap, onSelectMap, isExpanded, onToggleExpa
                   <div className="flex flex-wrap gap-2">
                     {MAP_META_AGENTS[selectedMap].duelists.map((agentName) => {
                       const agent = AGENTS.find(a => a.name === agentName);
+                      const profile = valorantMeta2026
+                        .find(m => m.mapName === selectedMap)
+                        ?.roleComposition?.['Duelist']
+                        ?.find(p => p.name === agentName);
+                      
                       return (
                         <div
                           key={agentName}
@@ -117,6 +124,11 @@ export function MapSelector({ selectedMap, onSelectMap, isExpanded, onToggleExpa
                           <span className="text-xs font-medium text-zinc-200">
                             {agentName}
                           </span>
+                          {profile && (
+                             <span className={`text-[9px] px-1 rounded border font-bold ${getTierColor(profile.tier)}`}>
+                               {profile.tier}
+                             </span>
+                          )}
                         </div>
                       );
                     })}
@@ -132,6 +144,11 @@ export function MapSelector({ selectedMap, onSelectMap, isExpanded, onToggleExpa
                   <div className="flex flex-wrap gap-2">
                     {MAP_META_AGENTS[selectedMap].controllers.map((agentName) => {
                       const agent = AGENTS.find(a => a.name === agentName);
+                      const profile = valorantMeta2026
+                        .find(m => m.mapName === selectedMap)
+                        ?.roleComposition?.['Controller']
+                        ?.find(p => p.name === agentName);
+
                       return (
                         <div
                           key={agentName}
@@ -145,6 +162,11 @@ export function MapSelector({ selectedMap, onSelectMap, isExpanded, onToggleExpa
                           <span className="text-xs font-medium text-zinc-200">
                             {agentName}
                           </span>
+                          {profile && (
+                             <span className={`text-[9px] px-1 rounded border font-bold ${getTierColor(profile.tier)}`}>
+                               {profile.tier}
+                             </span>
+                          )}
                         </div>
                       );
                     })}
@@ -160,6 +182,11 @@ export function MapSelector({ selectedMap, onSelectMap, isExpanded, onToggleExpa
                   <div className="flex flex-wrap gap-2">
                     {MAP_META_AGENTS[selectedMap].initiators.map((agentName) => {
                       const agent = AGENTS.find(a => a.name === agentName);
+                      const profile = valorantMeta2026
+                        .find(m => m.mapName === selectedMap)
+                        ?.roleComposition?.['Initiator']
+                        ?.find(p => p.name === agentName);
+
                       return (
                         <div
                           key={agentName}
@@ -173,6 +200,11 @@ export function MapSelector({ selectedMap, onSelectMap, isExpanded, onToggleExpa
                           <span className="text-xs font-medium text-zinc-200">
                             {agentName}
                           </span>
+                          {profile && (
+                             <span className={`text-[9px] px-1 rounded border font-bold ${getTierColor(profile.tier)}`}>
+                               {profile.tier}
+                             </span>
+                          )}
                         </div>
                       );
                     })}
@@ -188,6 +220,11 @@ export function MapSelector({ selectedMap, onSelectMap, isExpanded, onToggleExpa
                   <div className="flex flex-wrap gap-2">
                     {MAP_META_AGENTS[selectedMap].sentinels.map((agentName) => {
                       const agent = AGENTS.find(a => a.name === agentName);
+                      const profile = valorantMeta2026
+                        .find(m => m.mapName === selectedMap)
+                        ?.roleComposition?.['Sentinel']
+                        ?.find(p => p.name === agentName);
+
                       return (
                         <div
                           key={agentName}
@@ -201,6 +238,11 @@ export function MapSelector({ selectedMap, onSelectMap, isExpanded, onToggleExpa
                           <span className="text-xs font-medium text-zinc-200">
                             {agentName}
                           </span>
+                          {profile && (
+                             <span className={`text-[9px] px-1 rounded border font-bold ${getTierColor(profile.tier)}`}>
+                               {profile.tier}
+                             </span>
+                          )}
                         </div>
                       );
                     })}
