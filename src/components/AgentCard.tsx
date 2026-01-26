@@ -204,6 +204,16 @@ export function AgentCard({
       onMouseEnter={() => setShowInfo(true)}
       onMouseLeave={() => setShowInfo(false)}
       onClick={() => !rolling && setShowInfo(!showInfo)}
+      onKeyDown={(e) => {
+        if (!rolling && !canEdit && strategyProfile && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          setShowInfo(!showInfo);
+        }
+      }}
+      tabIndex={!rolling && !canEdit && strategyProfile ? 0 : undefined}
+      role={!rolling && !canEdit && strategyProfile ? "button" : undefined}
+      aria-label={!rolling && !canEdit && strategyProfile ? `View strategic intel for ${playerName}` : undefined}
+      aria-expanded={!rolling && !canEdit && strategyProfile ? showInfo : undefined}
     >
       <Card className={getCardClasses(rolling, status, className)}>
         
