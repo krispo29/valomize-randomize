@@ -156,7 +156,7 @@ export function subscribeToRoom(
           } else if (status === 'CLOSED') {
             onStatusChange?.('CLOSED');
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            onStatusChange?.('SUBSCRIBED'); // Local channel active
+            onStatusChange?.('SUBSCRIBED');
           }
         });
 
@@ -248,4 +248,73 @@ export async function broadcastMatchRecorded(
     payload: match,
   };
   await broadcastRoomMessage(cleanCode, msg);
+
+  // Also persist to Supabase Database table 'matches'
+  await saveMatchToDatabase(match, cleanCode);
+}
+
+export async function saveMatchToDatabase(
+  match: MatchRecord,
+  roomCode?: string
+): Promise<void> {
+  const client = getSupabase();
+  if (!client) return;
+
+  try {
+    await client.from('matches').insert([
+      {
+        id: match.id || `match_${Date.now()}`,
+        room_code: roomCode || null,
+        map: match.map,
+        result: match.result,
+        score_team: match.scoreTeam,
+        score_enemy: match.scoreEnemy,
+        match_mvp: match.matchMvpName || null,
+        notes: match.notes || null,
+        players: match.players,
+        created_at: new Date(match.timestamp || Date.now()).toISOString(),
+      },
+    ]);
+  } catch (e) {
+    console.warn('Could not save match to Supabase table:', e);
+  }
+}
+
+export async function fetchMatchesFromDatabase(
+  roomCode?: string
+): Promise<{ success: boolean; matches: MatchRecord[]; error?: string }> {
+  const client = getSupabase();
+  if (!client) {
+    return { success: false, matches: [], error: 'ไม่ได้เชื่อมต่อ Supabase Database' };
+  }
+
+  try {
+    let query = client.from('matches').select('*').order('created_at', { ascending: false });
+    if (roomCode) {
+      const clean = sanitizeRoomCode(roomCode);
+      query = query.eq('room_code', clean);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      return { success: false, matches: [], error: error.message };
+    }
+
+    const converted: MatchRecord[] = (data || []).map((row: any) => ({
+      id: row.id,
+      map: row.map,
+      mapImage: row.map_image,
+      result: row.result as 'WIN' | 'LOSS',
+      scoreTeam: row.score_team,
+      scoreEnemy: row.score_enemy,
+      matchMvpName: row.match_mvp,
+      notes: row.notes,
+      timestamp: new Date(row.created_at).getTime(),
+      players: row.players,
+    }));
+
+    return { success: true, matches: converted };
+  } catch (err) {
+    return { success: false, matches: [], error: String(err) };
+  }
 }

@@ -14,6 +14,8 @@ import { useValorantData } from '@/hooks/useValorantData';
 import { usePlayerProfiles } from '@/hooks/usePlayerProfiles';
 import { useMultiplayerRoom } from '@/hooks/useMultiplayerRoom';
 import { type RoomState } from '@/types/multiplayer';
+import { type MatchRecord } from '@/types/stats';
+import { saveMatchToDatabase } from '@/services/supabaseService';
 import { VictoryScreen } from '@/components/VictoryScreen';
 import { StatsDashboard } from '@/components/StatsDashboard';
 import { RecordMatchModal } from '@/components/RecordMatchModal';
@@ -768,19 +770,21 @@ function App() {
         <StatsDashboard
           show={showStatsDashboard}
           onClose={() => setShowStatsDashboard(false)}
+          onShareMatch={() => setShowShareCardModal(true)}
         />
 
         <RecordMatchModal
           show={showRecordMatch}
           onClose={() => setShowRecordMatch(false)}
           onSave={(match) => {
-            addMatch(match);
+            const fullMatch: MatchRecord = {
+              ...match,
+              id: `match_${Date.now()}`,
+              timestamp: Date.now(),
+            };
+            addMatch(fullMatch);
+            saveMatchToDatabase(fullMatch, roomCode || undefined);
             if (isInRoom) {
-              const fullMatch = {
-                ...match,
-                id: `match_${Date.now()}`,
-                timestamp: Date.now(),
-              };
               broadcastMatch(fullMatch);
             }
           }}
