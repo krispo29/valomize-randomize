@@ -16,6 +16,8 @@ export interface RoomState {
   assignmentsByIndex: Record<number, Agent | null>;
   phase: 'IDLE' | 'GATHERING' | 'SHUFFLING' | 'DEALING' | 'REVEALING';
   revealedIndices: number[];
+  deckIndices?: number[];
+  gridIndices?: number[];
   showVictory: boolean;
   lastUpdated: number;
 }

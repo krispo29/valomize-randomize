@@ -28,22 +28,36 @@ export function sanitizeRoomCode(raw: string): string {
   return trimmed.replace(/[^a-zA-Z0-9-]/g, '').toUpperCase();
 }
 
+export function cleanSupabaseUrl(raw: string): string {
+  if (!raw) return '';
+  let clean = raw.trim();
+  clean = clean.replace(/\/rest\/v1\/?$/i, '');
+  clean = clean.replace(/\/+$/, '');
+  return clean;
+}
+
 export function getSupabaseConfig(): SupabaseConfig {
   try {
     const saved = localStorage.getItem(SUPABASE_CONFIG_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed?.url && parsed?.anonKey) {
-        return parsed;
+        return {
+          url: cleanSupabaseUrl(parsed.url),
+          anonKey: parsed.anonKey.trim(),
+        };
       }
     }
   } catch {
     // fallback
   }
 
+  const envUrl = (import.meta.env.VITE_SUPABASE_URL as string) || '';
+  const envKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || '';
+
   return {
-    url: (import.meta.env.VITE_SUPABASE_URL as string) || '',
-    anonKey: (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || '',
+    url: cleanSupabaseUrl(envUrl),
+    anonKey: envKey.trim(),
   };
 }
 
@@ -70,7 +84,7 @@ export function getSupabase(): SupabaseClient | null {
       supabaseClient = createClient(config.url, config.anonKey, {
         realtime: {
           params: {
-            eventsPerSecond: 10,
+            eventsPerSecond: 20,
           },
         },
       });
@@ -96,7 +110,7 @@ export function subscribeToRoom(
 ): { unsubscribe: () => void } {
   const cleanCode = sanitizeRoomCode(rawRoomCode);
 
-  // 1. Setup Local Tab-to-Tab BroadcastChannel for instant zero-latency sync
+  // 1. Setup Local Tab-to-Tab BroadcastChannel for instant local testing
   try {
     if (typeof BroadcastChannel !== 'undefined') {
       if (localBroadcastChannel) {
@@ -113,10 +127,7 @@ export function subscribeToRoom(
     // ignore
   }
 
-  // Notify immediately that local channel is ready
-  onStatusChange?.('SUBSCRIBED');
-
-  // 2. Setup Supabase Realtime Channel (if configured)
+  // 2. Setup Supabase Realtime Channel (WebSocket across all devices)
   const client = getSupabase();
   if (client) {
     try {
@@ -124,12 +135,11 @@ export function subscribeToRoom(
         currentChannel.unsubscribe();
       }
 
-      // Safe clean channel name without colons or slashes
       const safeChannelName = `room_${cleanCode.replace(/[^a-zA-Z0-9_]/g, '_')}`;
 
       const channel = client.channel(safeChannelName, {
         config: {
-          broadcast: { self: false },
+          broadcast: { self: false, ack: true },
           presence: { key: `member_${Math.random().toString(36).substring(2, 7)}` },
         },
       });
@@ -145,6 +155,8 @@ export function subscribeToRoom(
             onStatusChange?.('SUBSCRIBED');
           } else if (status === 'CLOSED') {
             onStatusChange?.('CLOSED');
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            onStatusChange?.('SUBSCRIBED'); // Local channel active
           }
         });
 
@@ -152,6 +164,8 @@ export function subscribeToRoom(
     } catch {
       onStatusChange?.('SUBSCRIBED');
     }
+  } else {
+    onStatusChange?.('SUBSCRIBED');
   }
 
   return {
@@ -187,7 +201,7 @@ export async function broadcastRoomMessage(
     // ignore
   }
 
-  // 2. Send via Supabase Realtime (if configured)
+  // 2. Send via Supabase Realtime
   try {
     if (currentChannel) {
       await currentChannel.send({

@@ -77,6 +77,12 @@ function App() {
     if (state.revealedIndices) {
       setRevealedIndices(new Set(state.revealedIndices));
     }
+    if (state.deckIndices !== undefined) {
+      setDeckIndices(state.deckIndices);
+    }
+    if (state.gridIndices !== undefined) {
+      setGridIndices(state.gridIndices);
+    }
     if (state.showVictory !== undefined) {
       setShowVictory(state.showVictory);
     }
@@ -274,6 +280,8 @@ function App() {
         assignmentsByIndex: {},
         phase: 'GATHERING',
         revealedIndices: [],
+        deckIndices: currentDeck,
+        gridIndices: [],
         showVictory: false,
         lastUpdated: Date.now(),
       });
@@ -306,6 +314,8 @@ function App() {
         assignmentsByIndex: results,
         phase: 'SHUFFLING',
         revealedIndices: [],
+        deckIndices: currentDeck,
+        gridIndices: [],
         showVictory: false,
         lastUpdated: Date.now(),
       });
@@ -317,14 +327,16 @@ function App() {
     
     const indicesToDeal = friends.map((_, i) => i);
     const currRevealed = new Set<number>();
+    const currGrid: number[] = [];
     
     for (const playerIndex of indicesToDeal) {
         // A. Deal Card (Face Down)
         const deckPos = currentDeck.indexOf(playerIndex);
         if (deckPos > -1) currentDeck.splice(deckPos, 1);
         
+        currGrid.push(playerIndex);
         setDeckIndices([...currentDeck]);
-        setGridIndices(prev => [...prev, playerIndex]);
+        setGridIndices([...currGrid]);
         
         await new Promise(r => setTimeout(r, 600)); 
 
@@ -347,6 +359,8 @@ function App() {
             assignmentsByIndex: results,
             phase: 'DEALING',
             revealedIndices: Array.from(currRevealed),
+            deckIndices: [...currentDeck],
+            gridIndices: [...currGrid],
             showVictory: false,
             lastUpdated: Date.now(),
           });
@@ -361,6 +375,8 @@ function App() {
     playVictory();
     setShowVictory(true);
     setPhase('IDLE');
+    setGridIndices(allIndices);
+    setDeckIndices([]);
 
     if (isInRoom && isHost && roomCode) {
       broadcastState({
@@ -376,6 +392,8 @@ function App() {
         assignmentsByIndex: results,
         phase: 'IDLE',
         revealedIndices: Array.from(currRevealed),
+        deckIndices: [],
+        gridIndices: allIndices,
         showVictory: true,
         lastUpdated: Date.now(),
       });
