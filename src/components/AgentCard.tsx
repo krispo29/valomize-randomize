@@ -164,6 +164,9 @@ interface AgentCardProps {
   readonly onClearName?: () => void;
   readonly strategyProfile?: AgentStrategyProfile;
   readonly activeSynergies?: string[];
+  readonly rankIcon?: string;
+  readonly rankName?: string;
+  readonly onOpenProfileModal?: () => void;
 }
 
 export function AgentCard({ 
@@ -179,7 +182,10 @@ export function AgentCard({
   onMvpRoleChange,
   onClearName,
   strategyProfile,
-  activeSynergies
+  activeSynergies,
+  rankIcon,
+  rankName,
+  onOpenProfileModal,
 }: AgentCardProps) {
   // If no agent yet, showing a placeholder or waiting
   const displayAgent = agent || { name: '?', role: 'Duelist', image: '', color: '#333' };
@@ -252,10 +258,30 @@ export function AgentCard({
 
         <CardHeader className="z-10 w-full text-center pb-2">
           {canEdit ? (
-             renderEditControls(playerName, status, onStatusChange, mvpRole, onMvpRoleChange, onEditName, onClearName)
+             <div className="flex flex-col gap-2">
+               {renderEditControls(playerName, status, onStatusChange, mvpRole, onMvpRoleChange, onEditName, onClearName)}
+               {onOpenProfileModal && (
+                 <button
+                   type="button"
+                   onClick={onOpenProfileModal}
+                   className="mt-1 flex items-center justify-center gap-1.5 text-[11px] font-bold text-zinc-400 hover:text-white bg-zinc-800/80 hover:bg-zinc-700 py-1 px-2 rounded border border-zinc-700 transition"
+                 >
+                   {rankIcon && <img src={rankIcon} alt="Rank" className="w-3.5 h-3.5 object-contain" />}
+                   <span>{rankName || 'ตั้งค่า Riot ID / แรงค์'}</span>
+                 </button>
+               )}
+             </div>
           ) : (
-             <CardTitle className={cn("text-xl font-bold text-white uppercase tracking-wider")}>
-               {playerName}
+             <CardTitle className={cn("text-xl font-bold text-white uppercase tracking-wider flex items-center justify-center gap-2")}>
+               <span>{playerName}</span>
+               {rankIcon && (
+                 <img
+                   src={rankIcon}
+                   alt={rankName || 'Rank'}
+                   className="w-5 h-5 object-contain inline-block shrink-0 drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]"
+                   title={rankName}
+                 />
+               )}
              </CardTitle>
           )}
         </CardHeader>

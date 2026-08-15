@@ -1,8 +1,10 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { type Agent, type Role } from "@/data/valorant";
-import { Sword, Shield, Target, Users, RefreshCw, Trophy } from "lucide-react";
+import { Sword, Shield, Target, Users, RefreshCw, Trophy, Image as ImageIcon } from "lucide-react";
 import { Button } from "./ui/button";
 import { useMemo } from "react";
+
+import { type PlayerProfile } from "@/types/player";
 
 interface VictoryScreenProps {
   readonly show: boolean;
@@ -12,6 +14,9 @@ interface VictoryScreenProps {
   readonly shuffledOrder?: number[];
   readonly onPlayAgain: () => void;
   readonly onClose: () => void;
+  readonly onRecordMatch?: () => void;
+  readonly onShareCard?: () => void;
+  readonly profiles?: Record<number, PlayerProfile>;
 }
 
 // Pre-generated particle positions to avoid Math.random() during render
@@ -58,7 +63,10 @@ export function VictoryScreen({
   playerStatuses,
   shuffledOrder = [],
   onPlayAgain, 
-  onClose 
+  onClose,
+  onRecordMatch,
+  onShareCard,
+  profiles,
 }: VictoryScreenProps) {
   // Count roles for composition display
   const roleCount = useMemo(() => {
@@ -211,9 +219,19 @@ export function VictoryScreen({
                       </div>
                     )}
 
-                    {/* Player Name */}
-                    <div className="z-10 w-full text-center px-1 mt-2">
-                      <h3 className="text-white font-bold uppercase tracking-wider text-xs md:text-sm truncate drop-shadow-md">{player}</h3>
+                    {/* Player Name and Rank */}
+                    <div className="z-10 w-full text-center px-1 mt-2 flex items-center justify-center gap-1.5">
+                      <h3 className="text-white font-bold uppercase tracking-wider text-xs md:text-sm truncate drop-shadow-md">
+                        {player}
+                      </h3>
+                      {profiles && profiles[originalIndex]?.rankIcon && (
+                        <img
+                          src={profiles[originalIndex].rankIcon}
+                          alt={profiles[originalIndex].rankName || 'Rank'}
+                          className="w-4 h-4 object-contain inline-block shrink-0 drop-shadow-sm"
+                          title={profiles[originalIndex].rankName}
+                        />
+                      )}
                     </div>
 
                     {/* Agent Image */}
@@ -248,8 +266,26 @@ export function VictoryScreen({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.8 }}
-              className="flex gap-4 justify-center"
+              className="flex flex-wrap gap-3 justify-center"
             >
+              {onRecordMatch && (
+                <Button
+                  onClick={onRecordMatch}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-3 flex items-center gap-2 shadow-lg shadow-emerald-500/30 border border-emerald-400/40"
+                >
+                  <Trophy className="h-5 w-5" />
+                  บันทึกผลการแข่ง (Record Match)
+                </Button>
+              )}
+              {onShareCard && (
+                <Button
+                  onClick={onShareCard}
+                  className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-6 py-3 flex items-center gap-2 shadow-lg shadow-cyan-500/30 border border-cyan-400/40"
+                >
+                  <ImageIcon className="h-5 w-5" />
+                  แชร์การ์ด (Share Card)
+                </Button>
+              )}
               <Button
                 onClick={onPlayAgain}
                 className="bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-3 flex items-center gap-2 shadow-lg shadow-red-500/30"
@@ -260,7 +296,7 @@ export function VictoryScreen({
               <Button
                 variant="outline"
                 onClick={onClose}
-                className="border-zinc-600 text-white hover:bg-zinc-800"
+                className="border-zinc-600 text-white hover:bg-zinc-800 px-6 py-3"
               >
                 Close
               </Button>

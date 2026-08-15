@@ -3,13 +3,23 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AgentCard } from '@/components/AgentCard';
 import { RoleSelector } from '@/components/RoleSelector';
 import { Button } from '@/components/ui/button';
-import { AGENTS, DEFAULT_FRIENDS, type Agent, type Role, type ValorantMap, MAP_META, MAP_ROLE_COMPOSITION } from '@/data/valorant';
+import { DEFAULT_FRIENDS, type Agent, type Role, type ValorantMap, MAP_META, MAP_ROLE_COMPOSITION } from '@/data/valorant';
 import { valorantMeta2026, type AgentStrategyProfile } from '@/data/meta';
-import { Shuffle, UserCog, Settings2, Map as MapIcon, Volume2, VolumeX } from 'lucide-react';
+import { Shuffle, UserCog, Settings2, Map as MapIcon, Volume2, VolumeX, BarChart3, Trophy, Globe } from 'lucide-react';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useSoundManager } from '@/hooks/useSoundManager';
+import { useMatchStats } from '@/hooks/useMatchStats';
+import { useValorantData } from '@/hooks/useValorantData';
+import { usePlayerProfiles } from '@/hooks/usePlayerProfiles';
+import { useMultiplayerRoom } from '@/hooks/useMultiplayerRoom';
+import { type RoomState } from '@/types/multiplayer';
 import { VictoryScreen } from '@/components/VictoryScreen';
+import { StatsDashboard } from '@/components/StatsDashboard';
+import { RecordMatchModal } from '@/components/RecordMatchModal';
+import { PlayerProfilesModal } from '@/components/PlayerProfilesModal';
+import { MultiplayerModal } from '@/components/MultiplayerModal';
+import { ShareMatchCardModal } from '@/components/ShareMatchCardModal';
 import jettLogo from '@/assets/jett_logo.png';
 
 const MapSelector = lazy(() => import('@/components/MapSelector').then(module => ({ default: module.MapSelector })));
@@ -24,9 +34,67 @@ function App() {
   const [showMapSelector, setShowMapSelector] = useState(false);
   const [selectedMap, setSelectedMap] = useLocalStorage<ValorantMap | null>('valorant-selected-map', null);
 
-  // New State for optional features
   const [playerStatuses, setPlayerStatuses] = useState<Record<number, 'MVP' | 'BOTTOM' | null>>({});
   const [mvpRoleChoices, setMvpRoleChoices] = useState<Record<number, Role | null>>({});
+
+  // Live Valorant-API Dynamic Data
+  const { agents: liveAgents } = useValorantData();
+
+  // Player Profiles & Ranks State (Phase 3)
+  const { profiles, setPlayerRank, syncPlayerRiot } = usePlayerProfiles(friends);
+  const [showProfilesModal, setShowProfilesModal] = useState(false);
+
+  // Stats Dashboard & Match Logging State
+  const { matches, addMatch } = useMatchStats();
+  const [showStatsDashboard, setShowStatsDashboard] = useState(false);
+  const [showRecordMatch, setShowRecordMatch] = useState(false);
+  const [showShareCardModal, setShowShareCardModal] = useState(false);
+  const [showMultiplayerModal, setShowMultiplayerModal] = useState(false);
+
+  // Multiplayer Room State (Phase 4)
+  const handleRemoteState = (state: RoomState) => {
+    if (state.friends && state.friends.length > 0) {
+      setFriends(state.friends);
+    }
+    if (state.selectedMap !== undefined) {
+      setSelectedMap(state.selectedMap);
+    }
+    if (state.playerStatuses) {
+      setPlayerStatuses(state.playerStatuses);
+    }
+    if (state.mvpRoleChoices) {
+      setMvpRoleChoices(state.mvpRoleChoices);
+    }
+    if (state.rolesCount) {
+      setRolesCount(state.rolesCount);
+    }
+    if (state.assignmentsByIndex) {
+      setAssignmentsByIndex(state.assignmentsByIndex);
+    }
+    if (state.phase) {
+      setPhase(state.phase);
+    }
+    if (state.revealedIndices) {
+      setRevealedIndices(new Set(state.revealedIndices));
+    }
+    if (state.showVictory !== undefined) {
+      setShowVictory(state.showVictory);
+    }
+  };
+
+  const {
+    roomCode,
+    isHost,
+    isInRoom,
+    connectionStatus: roomConnectionStatus,
+    createRoom,
+    joinRoom,
+    leaveRoom,
+    broadcastState,
+    broadcastMatch,
+  } = useMultiplayerRoom(handleRemoteState, (incomingMatch) => {
+    addMatch(incomingMatch);
+  });
 
   // Initial Role Counts (All 0 = Random)
   const [rolesCount, setRolesCount] = useState<Record<Role, number>>({
@@ -71,8 +139,8 @@ function App() {
       const usedAgentNames = new Set<string>();
       
       const currentPool = selectedMap 
-          ? AGENTS.filter(a => new Set(MAP_META[selectedMap]).has(a.name))
-          : AGENTS;
+          ? liveAgents.filter(a => new Set(MAP_META[selectedMap]).has(a.name))
+          : liveAgents;
 
       const roleRequirements: Record<Role, number> = selectedMap 
           ? {
@@ -105,7 +173,7 @@ function App() {
 
           if (roleToForce) {
               let agent = pickAgent(roleToForce, usedAgentNames, currentPool);
-              agent ??= pickAgent(roleToForce, usedAgentNames, AGENTS);
+              agent ??= pickAgent(roleToForce, usedAgentNames, liveAgents);
               
               if (agent) {
                   final[index] = agent;
@@ -122,9 +190,9 @@ function App() {
          const specificRole = role as Role;
          for (let i = 0; i < count; i++) {
              let agent = pickAgent(specificRole, usedAgentNames, currentPool);
-             agent ??= pickAgent(specificRole, usedAgentNames, AGENTS);
+             agent ??= pickAgent(specificRole, usedAgentNames, liveAgents);
              if (!agent) {
-                  const anyCandidates = AGENTS.filter(a => a.role === specificRole);
+                  const anyCandidates = liveAgents.filter(a => a.role === specificRole);
                   agent = anyCandidates[Math.floor(Math.random() * anyCandidates.length)];
              }
 
@@ -139,7 +207,7 @@ function App() {
       const remainingSlotsNeeded = friends.length - assignedIndices.size - requiredPool.length;
       if (remainingSlotsNeeded > 0) {
          const availableMeta = currentPool.filter(a => !usedAgentNames.has(a.name));
-         const availableAll = AGENTS.filter(a => !usedAgentNames.has(a.name));
+         const availableAll = liveAgents.filter(a => !usedAgentNames.has(a.name));
          const poolSource = availableMeta.length >= remainingSlotsNeeded ? availableMeta : availableAll;
          
          const shuffledPoolSource = [...poolSource].sort(() => 0.5 - Math.random());
@@ -149,7 +217,7 @@ function App() {
                  requiredPool.push(shuffledPoolSource[i]);
                  usedAgentNames.add(shuffledPoolSource[i].name);
              } else {
-                 requiredPool.push(AGENTS[Math.floor(Math.random() * AGENTS.length)]);
+                 requiredPool.push(liveAgents[Math.floor(Math.random() * liveAgents.length)]);
              }
          }
       }
@@ -192,6 +260,25 @@ function App() {
     const currentDeck = [...allIndices];
     setDeckIndices(currentDeck);
 
+    if (isInRoom && isHost && roomCode) {
+      broadcastState({
+        roomCode,
+        hostName: friends[0] || 'Host',
+        createdAt: Date.now(),
+        friends,
+        profiles,
+        selectedMap,
+        playerStatuses,
+        mvpRoleChoices,
+        rolesCount,
+        assignmentsByIndex: {},
+        phase: 'GATHERING',
+        revealedIndices: [],
+        showVictory: false,
+        lastUpdated: Date.now(),
+      });
+    }
+
     await new Promise(r => setTimeout(r, 800));
 
     // 2. SHUFFLE
@@ -205,11 +292,31 @@ function App() {
     const results = calculateAssignments();
     setAssignmentsByIndex(results);
 
+    if (isInRoom && isHost && roomCode) {
+      broadcastState({
+        roomCode,
+        hostName: friends[0] || 'Host',
+        createdAt: Date.now(),
+        friends,
+        profiles,
+        selectedMap,
+        playerStatuses,
+        mvpRoleChoices,
+        rolesCount,
+        assignmentsByIndex: results,
+        phase: 'SHUFFLING',
+        revealedIndices: [],
+        showVictory: false,
+        lastUpdated: Date.now(),
+      });
+    }
+
     // 3. DEAL & REVEAL LOOP
     setPhase('DEALING');
     stopRoll();
     
     const indicesToDeal = friends.map((_, i) => i);
+    const currRevealed = new Set<number>();
     
     for (const playerIndex of indicesToDeal) {
         // A. Deal Card (Face Down)
@@ -222,12 +329,28 @@ function App() {
         await new Promise(r => setTimeout(r, 600)); 
 
         // B. Reveal Card (Face Up)
-        setRevealedIndices(prev => {
-            const next = new Set(prev);
-            next.add(playerIndex);
-            return next;
-        });
+        currRevealed.add(playerIndex);
+        setRevealedIndices(new Set(currRevealed));
         playReveal();
+
+        if (isInRoom && isHost && roomCode) {
+          broadcastState({
+            roomCode,
+            hostName: friends[0] || 'Host',
+            createdAt: Date.now(),
+            friends,
+            profiles,
+            selectedMap,
+            playerStatuses,
+            mvpRoleChoices,
+            rolesCount,
+            assignmentsByIndex: results,
+            phase: 'DEALING',
+            revealedIndices: Array.from(currRevealed),
+            showVictory: false,
+            lastUpdated: Date.now(),
+          });
+        }
 
         await new Promise(r => setTimeout(r, 400));
     }
@@ -238,6 +361,25 @@ function App() {
     playVictory();
     setShowVictory(true);
     setPhase('IDLE');
+
+    if (isInRoom && isHost && roomCode) {
+      broadcastState({
+        roomCode,
+        hostName: friends[0] || 'Host',
+        createdAt: Date.now(),
+        friends,
+        profiles,
+        selectedMap,
+        playerStatuses,
+        mvpRoleChoices,
+        rolesCount,
+        assignmentsByIndex: results,
+        phase: 'IDLE',
+        revealedIndices: Array.from(currRevealed),
+        showVictory: true,
+        lastUpdated: Date.now(),
+      });
+    }
   };
 
   const handleStatusChange = (index: number, newStatus: 'MVP' | 'BOTTOM' | null) => {
@@ -396,6 +538,53 @@ function App() {
                         >
                             <UserCog className="h-6 w-6" />
                         </Button>
+
+                        <Button
+                            variant="outline"
+                            onClick={() => setShowProfilesModal(true)}
+                            className="border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 hover:border-yellow-500/50 h-14 md:h-auto flex items-center gap-1.5 px-3"
+                            title="ตั้งค่า Riot ID & ตราแรงค์ผู้เล่น"
+                            aria-label="Player Profiles and Ranks"
+                        >
+                            <Trophy className="h-5 w-5 text-yellow-400" />
+                            <span className="hidden sm:inline text-xs font-bold uppercase tracking-wider">Ranks</span>
+                        </Button>
+
+                        <Button
+                            variant="outline"
+                            onClick={() => setShowMultiplayerModal(true)}
+                            className={`h-14 md:h-auto flex items-center gap-1.5 px-3 transition-all ${
+                              isInRoom
+                                ? 'bg-cyan-950/80 border-cyan-500 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.3)]'
+                                : 'border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 hover:border-cyan-500/50'
+                            }`}
+                            title="Multiplayer Squad Room"
+                            aria-label="Multiplayer Room"
+                        >
+                            <Globe className={`h-5 w-5 ${isInRoom ? 'text-cyan-400 animate-spin-slow' : 'text-zinc-400'}`} />
+                            <span className="hidden sm:inline text-xs font-bold uppercase tracking-wider">
+                              {isInRoom ? roomCode : 'Room'}
+                            </span>
+                            {isInRoom && (
+                              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                            )}
+                        </Button>
+
+                        <Button
+                            variant="outline"
+                            onClick={() => setShowStatsDashboard(true)}
+                            className="border-red-500/40 text-white bg-zinc-900/90 hover:bg-zinc-800 hover:border-red-500 h-14 md:h-auto flex items-center gap-2 px-3.5 shadow-lg shadow-red-500/10 group"
+                            title="Squad Stats Dashboard"
+                            aria-label="Open Squad Stats"
+                        >
+                            <BarChart3 className="h-6 w-6 text-red-500 group-hover:scale-110 transition-transform" />
+                            <span className="hidden sm:inline font-bold text-xs uppercase tracking-wider">Stats</span>
+                            {matches.length > 0 && (
+                                <span className="px-1.5 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black">
+                                    {matches.length}
+                                </span>
+                            )}
+                        </Button>
                     </div>
                 </div>
             </div>
@@ -499,6 +688,9 @@ function App() {
                                                 syn => Object.values(assignmentsByIndex).some(a => a?.name === syn)
                                             )
                                         }
+                                        rankIcon={profiles[index]?.rankIcon}
+                                        rankName={profiles[index]?.rankName}
+                                        onOpenProfileModal={() => setShowProfilesModal(true)}
                                     />
                                 </motion.div>
                             )}
@@ -514,11 +706,74 @@ function App() {
           assignments={assignmentsByIndex} 
 		  playerStatuses={playerStatuses}
           shuffledOrder={friends.map((_, i) => i)}
+          profiles={profiles}
           onPlayAgain={() => {
             setShowVictory(false);
             setPhase('IDLE');
           }}
           onClose={() => setShowVictory(false)}
+          onRecordMatch={() => setShowRecordMatch(true)}
+          onShareCard={() => setShowShareCardModal(true)}
+        />
+
+        <StatsDashboard
+          show={showStatsDashboard}
+          onClose={() => setShowStatsDashboard(false)}
+        />
+
+        <RecordMatchModal
+          show={showRecordMatch}
+          onClose={() => setShowRecordMatch(false)}
+          onSave={(match) => {
+            addMatch(match);
+            if (isInRoom) {
+              const fullMatch = {
+                ...match,
+                id: `match_${Date.now()}`,
+                timestamp: Date.now(),
+              };
+              broadcastMatch(fullMatch);
+            }
+          }}
+          players={friends}
+          assignments={assignmentsByIndex}
+          playerStatuses={playerStatuses}
+          selectedMap={selectedMap}
+        />
+
+        <PlayerProfilesModal
+          show={showProfilesModal}
+          onClose={() => setShowProfilesModal(false)}
+          players={friends}
+          profiles={profiles}
+          onSetRank={setPlayerRank}
+          onSyncRiot={syncPlayerRiot}
+          onUpdateName={(idx, newName) => {
+            const newF = [...friends];
+            newF[idx] = newName;
+            setFriends(newF);
+          }}
+        />
+
+        <MultiplayerModal
+          show={showMultiplayerModal}
+          onClose={() => setShowMultiplayerModal(false)}
+          roomCode={roomCode}
+          isHost={isHost}
+          connectionStatus={roomConnectionStatus}
+          onCreateRoom={createRoom}
+          onJoinRoom={joinRoom}
+          onLeaveRoom={leaveRoom}
+        />
+
+        <ShareMatchCardModal
+          show={showShareCardModal}
+          onClose={() => setShowShareCardModal(false)}
+          players={friends}
+          assignments={assignmentsByIndex}
+          playerStatuses={playerStatuses}
+          selectedMap={selectedMap}
+          profiles={profiles}
         />
         
         {editMode && (
