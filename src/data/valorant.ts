@@ -262,10 +262,10 @@ export const MAP_META_AGENTS: Record<ValorantMap, {
   sentinels: string[] 
 }> = {
   'Abyss': {
-    duelists: ['Jett', 'Neon', 'Waylay'],
+    duelists: ['Jett', 'Neon', 'Waylay', 'Iso'],
     controllers: ['Omen', 'Astra', 'Harbor'],
     initiators: ['Sova', 'KAY/O', 'Fade'],
-    sentinels: ['Cypher', 'Veto', 'Deadlock']
+    sentinels: ['Cypher', 'Veto', 'Deadlock', 'Chamber']
   },
   'Ascent': { // Standard Comp, inferred as stable
     duelists: ['Jett', 'Raze', 'Phoenix', 'Reyna'],
@@ -277,7 +277,7 @@ export const MAP_META_AGENTS: Record<ValorantMap, {
     duelists: ['Raze', 'Neon', 'Phoenix'],
     controllers: ['Brimstone', 'Viper', 'Omen'],
     initiators: ['Skye', 'Gekko', 'Tejo'],
-    sentinels: ['Cypher', 'Sage', 'Veto']
+    sentinels: ['Cypher', 'Sage', 'Veto', 'Chamber']
   },
   'Breeze': {
     duelists: ['Jett', 'Yoru', 'Reyna'],
@@ -286,7 +286,7 @@ export const MAP_META_AGENTS: Record<ValorantMap, {
     sentinels: ['Cypher', 'Chamber', 'Veto']
   },
   'Corrode': { 
-    duelists: ['Waylay', 'Yoru', 'Neon'],
+    duelists: ['Waylay', 'Yoru', 'Neon', 'Iso'],
     controllers: ['Omen', 'Viper', 'Clove'],
     initiators: ['Fade', 'Sova', 'Tejo'],
     sentinels: ['Cypher', 'Vyse', 'Deadlock']
@@ -301,7 +301,7 @@ export const MAP_META_AGENTS: Record<ValorantMap, {
     duelists: ['Jett', 'Neon', 'Phoenix'],
     controllers: ['Omen', 'Astra', 'Clove'],
     initiators: ['Breach', 'Sova', 'Fade'],
-    sentinels: ['Killjoy', 'Cypher', 'Veto']
+    sentinels: ['Killjoy', 'Cypher', 'Veto', 'Chamber']
   },
   'Icebox': { // Unchanged
     duelists: ['Jett', 'Reyna', 'Yoru', 'Iso'],
@@ -319,7 +319,7 @@ export const MAP_META_AGENTS: Record<ValorantMap, {
     duelists: ['Jett', 'Neon', 'Phoenix'],
     controllers: ['Astra', 'Viper', 'Harbor'],
     initiators: ['Fade', 'KAY/O', 'Gekko'],
-    sentinels: ['Veto', 'Killjoy', 'Cypher']
+    sentinels: ['Veto', 'Killjoy', 'Cypher', 'Chamber']
   },
   'Split': {
     duelists: ['Raze', 'Jett', 'Waylay'],

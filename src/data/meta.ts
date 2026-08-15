@@ -48,6 +48,14 @@ export const valorantMeta2026: MapMetaConfiguration[] = [
           pickRateTrend: 'Rising',
           strategicReasoning: 'Multi-directional dash allows safe peeking of long angles; Refract baits OPs.',
           keyInteractions: ['Refract decoy on A-Main', 'Light Speed lateral dash']
+        },
+        {
+          name: 'Iso',
+          tier: 'A',
+          pickRateTrend: 'Rising',
+          strategicReasoning: 'Double Tap shield counters Operator dominance on long sightlines.',
+          keyInteractions: ['Dry peeking Mid w/ Shield', 'Undercut on jump-ups'],
+          synergies: ['Sova', 'Omen']
         }
       ],
       'Initiator': [
@@ -108,6 +116,14 @@ export const valorantMeta2026: MapMetaConfiguration[] = [
           strategicReasoning: 'Global info passive mandatory for flank routes; Unbreakable trips on bridges.',
           keyInteractions: ['Spycam high placements', 'Tripwires on bridge'],
           synergies: ['Omen', 'Sova']
+        },
+        {
+          name: 'Chamber',
+          tier: 'S',
+          pickRateTrend: 'Rising',
+          strategicReasoning: 'Trademark buffer removal allows global flank watch; Headhunter dominates long sightlines.',
+          keyInteractions: ['Holding mid-air angles with TP', 'Oping on A-Main'],
+          synergies: ['Jett', 'Sova']
         },
         {
           name: 'Veto',
@@ -221,6 +237,14 @@ export const valorantMeta2026: MapMetaConfiguration[] = [
           pickRateTrend: 'Stable',
           strategicReasoning: 'Barrier Orb critical for B-Tube plant; Slows stop Hookah rush.',
           keyInteractions: ['Wall off Showers', 'Slow Orb Hookah']
+        },
+        {
+          name: 'Chamber',
+          tier: 'B',
+          pickRateTrend: 'Rising',
+          strategicReasoning: 'Teleport allows aggression in Showers/Hookah; Headhunter eco rounds.',
+          keyInteractions: ['Aggressive peek Showers', 'TP to backsite'],
+          synergies: ['Brimstone']
         },
         {
           name: 'Veto',
@@ -357,6 +381,13 @@ export const valorantMeta2026: MapMetaConfiguration[] = [
           pickRateTrend: 'Stable',
           strategicReasoning: 'Corridors suit movement speed; Relay bolt opens sites.',
           keyInteractions: ['Fast Lane dissecting site', 'Rotation speed']
+        },
+        {
+          name: 'Iso',
+          tier: 'B',
+          pickRateTrend: 'Stable',
+          strategicReasoning: 'Shield excels in isolated 1v1 aim duels inherent to the map.',
+          keyInteractions: ['Shielded entry on B', 'Kill Contract in tight lanes']
         }
       ],
       'Initiator': [
@@ -520,6 +551,14 @@ export const valorantMeta2026: MapMetaConfiguration[] = [
           keyInteractions: ['Camera C-Garage', 'Trapwires A-Short']
         },
         {
+          name: 'Chamber',
+          tier: 'A',
+          pickRateTrend: 'Rising',
+          strategicReasoning: 'Can hold C-Long or A-Long with Operator effectively; Trademark holds Garage flank.',
+          keyInteractions: ['Op hold C-Long', 'TP to elevated positions'],
+          synergies: ['Jett']
+        },
+        {
           name: 'Veto',
           tier: 'B',
           pickRateTrend: 'Rising',
@@ -610,6 +649,14 @@ export const valorantMeta2026: MapMetaConfiguration[] = [
           pickRateTrend: 'Rising',
           strategicReasoning: 'Interceptor neutralizes Sova/KAY/O util on B-Default plant.',
           keyInteractions: ['Block lineups', 'Hold B-Long']
+        },
+        {
+          name: 'Chamber',
+          tier: 'A',
+          pickRateTrend: 'Rising',
+          strategicReasoning: 'Best B-Long holder alongside Jett; Trademark watches Art/Mid.',
+          keyInteractions: ['Op battle B-Long', 'TP behind screen'],
+          synergies: ['Jett', 'Astra']
         },
         {
           name: 'Killjoy',
