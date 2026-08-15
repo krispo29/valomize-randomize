@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, X, Sparkles, Check, Search, User, AlertCircle } from 'lucide-react';
+import { Trophy, X, Sparkles, Check, Search, User, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from './ui/button';
 import { type PlayerProfile } from '@/types/player';
 import { VALORANT_RANKS } from '@/services/rankService';
@@ -15,6 +15,19 @@ interface PlayerProfilesModalProps {
   onUpdateName: (index: number, newName: string) => void;
 }
 
+const RANK_DIVISIONS = [
+  'ALL',
+  'Iron',
+  'Bronze',
+  'Silver',
+  'Gold',
+  'Platinum',
+  'Diamond',
+  'Ascendant',
+  'Immortal',
+  'Radiant',
+] as const;
+
 export function PlayerProfilesModal({
   show,
   onClose,
@@ -26,6 +39,7 @@ export function PlayerProfilesModal({
 }: PlayerProfilesModalProps) {
   const [selectedPlayerIndex, setSelectedPlayerIndex] = useState<number>(0);
   const [riotIdInputs, setRiotIdInputs] = useState<Record<number, string>>({});
+  const [selectedDivision, setSelectedDivision] = useState<string>('ALL');
   const [syncStatus, setSyncStatus] = useState<{ loading: boolean; message?: string; isError?: boolean }>({
     loading: false,
   });
@@ -38,6 +52,10 @@ export function PlayerProfilesModal({
     rankIcon: VALORANT_RANKS[0].icon,
     rankColor: VALORANT_RANKS[0].color,
   };
+
+  const filteredRanks = selectedDivision === 'ALL'
+    ? VALORANT_RANKS
+    : VALORANT_RANKS.filter((r) => r.divisionName.toLowerCase() === selectedDivision.toLowerCase());
 
   const handleSyncClick = async () => {
     const inputVal = riotIdInputs[selectedPlayerIndex] || activeProfile.riotId || '';
@@ -62,6 +80,16 @@ export function PlayerProfilesModal({
     setTimeout(() => {
       setSyncStatus({ loading: false });
     }, 5000);
+  };
+
+  const handlePrevPlayer = () => {
+    setSelectedPlayerIndex((prev) => (prev > 0 ? prev - 1 : players.length - 1));
+    setSyncStatus({ loading: false });
+  };
+
+  const handleNextPlayer = () => {
+    setSelectedPlayerIndex((prev) => (prev < players.length - 1 ? prev + 1 : 0));
+    setSyncStatus({ loading: false });
   };
 
   return (
@@ -108,37 +136,57 @@ export function PlayerProfilesModal({
 
             {/* Body */}
             <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
-              {/* Player Selector Tabs */}
-              <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none border-b border-zinc-800/80">
-                {players.map((playerName, index) => {
-                  const prof = profiles[index];
-                  const isSelected = selectedPlayerIndex === index;
+              {/* Player Selector Tabs & Quick Navigation */}
+              <div className="flex items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
+                <div className="flex items-center gap-2 overflow-x-auto scrollbar-none flex-1">
+                  {players.map((playerName, index) => {
+                    const prof = profiles[index];
+                    const isSelected = selectedPlayerIndex === index;
 
-                  return (
-                    <button
-                      key={playerName + index}
-                      onClick={() => {
-                        setSelectedPlayerIndex(index);
-                        setSyncStatus({ loading: false });
-                      }}
-                      className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl border transition-all whitespace-nowrap ${
-                        isSelected
-                          ? 'bg-zinc-800 border-red-500 text-white shadow-md shadow-red-500/10 scale-105'
-                          : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
-                      }`}
-                    >
-                      {prof?.rankIcon ? (
-                        <img src={prof.rankIcon} alt="Rank" className="w-5 h-5 object-contain" />
-                      ) : (
-                        <User className="h-4 w-4" />
-                      )}
-                      <span className="font-bold text-xs uppercase">{playerName}</span>
-                      {prof?.rankName && prof.rankTier !== 0 && (
-                        <span className="text-[10px] text-zinc-400">({prof.rankName})</span>
-                      )}
-                    </button>
-                  );
-                })}
+                    return (
+                      <button
+                        key={playerName + index}
+                        onClick={() => {
+                          setSelectedPlayerIndex(index);
+                          setSyncStatus({ loading: false });
+                        }}
+                        className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border transition-all whitespace-nowrap ${
+                          isSelected
+                            ? 'bg-zinc-800 border-red-500 text-white shadow-md shadow-red-500/10 scale-105'
+                            : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        {prof?.rankIcon ? (
+                          <img src={prof.rankIcon} alt="Rank" className="w-4 h-4 object-contain" />
+                        ) : (
+                          <User className="h-3.5 w-3.5" />
+                        )}
+                        <span className="font-bold text-xs uppercase">{playerName}</span>
+                        {prof?.rankName && prof.rankTier !== 0 && (
+                          <span className="text-[10px] text-zinc-400">({prof.rankName})</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Prev / Next Player Quick Buttons (QoL) */}
+                <div className="hidden sm:flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={handlePrevPlayer}
+                    className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 transition"
+                    title="ผู้เล่นก่อนหน้า"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={handleNextPlayer}
+                    className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 transition"
+                    title="ผู้เล่นถัดไป"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
 
               {/* Active Player Edit Card */}
@@ -254,7 +302,7 @@ export function PlayerProfilesModal({
                     )}
                   </div>
 
-                  {/* Manual Rank Tier Selector (Visual Badges Grid) */}
+                  {/* Manual Rank Tier Selector with Division Filters (QoL Feature) */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
@@ -263,8 +311,26 @@ export function PlayerProfilesModal({
                       <span className="text-[10px] text-zinc-500">คลิกที่ตราแรงค์เพื่อเลือก</span>
                     </div>
 
-                    <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 max-h-56 overflow-y-auto p-2 bg-zinc-950/70 border border-zinc-800/80 rounded-xl">
-                      {VALORANT_RANKS.map((tier) => {
+                    {/* Division Quick Filter Pills (QoL) */}
+                    <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none">
+                      {RANK_DIVISIONS.map((div) => (
+                        <button
+                          key={div}
+                          type="button"
+                          onClick={() => setSelectedDivision(div)}
+                          className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase transition whitespace-nowrap ${
+                            selectedDivision === div
+                              ? 'bg-red-600 text-white shadow-sm'
+                              : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'
+                          }`}
+                        >
+                          {div}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 max-h-48 overflow-y-auto p-2 bg-zinc-950/70 border border-zinc-800/80 rounded-xl">
+                      {filteredRanks.map((tier) => {
                         const isSelected = activeProfile.rankTier === tier.tier;
 
                         return (
@@ -278,7 +344,7 @@ export function PlayerProfilesModal({
                                 : 'bg-zinc-900/50 border-zinc-800/60 hover:border-zinc-600 hover:bg-zinc-800/40 opacity-70 hover:opacity-100'
                             }`}
                           >
-                            <img src={tier.icon} alt={tier.tierName} className="w-8 h-8 object-contain mb-1" />
+                            <img src={tier.icon} alt={tier.tierName} className="w-7 h-7 object-contain mb-1" />
                             <span className="text-[10px] font-bold text-white truncate max-w-full text-center">
                               {tier.tierName}
                             </span>
@@ -292,7 +358,10 @@ export function PlayerProfilesModal({
             </div>
 
             {/* Footer Actions */}
-            <div className="p-4 md:px-6 border-t border-zinc-800 bg-zinc-900/40 flex justify-end">
+            <div className="p-4 md:px-6 border-t border-zinc-800 bg-zinc-900/40 flex justify-between items-center">
+              <span className="text-xs text-zinc-500 hidden sm:inline">
+                การตั้งค่าแรงค์จะถูกบันทึกอัตโนมัติ
+              </span>
               <Button onClick={onClose} className="bg-red-600 hover:bg-red-500 text-white font-bold px-6">
                 เรียบร้อย (Done)
               </Button>

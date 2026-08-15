@@ -5,6 +5,7 @@ import {
   subscribeToRoom,
   broadcastStateSync,
   broadcastMatchRecorded,
+  sanitizeRoomCode,
 } from '@/services/supabaseService';
 
 export function useMultiplayerRoom(
@@ -45,8 +46,11 @@ export function useMultiplayerRoom(
     try {
       const urlParams = new URLSearchParams(window.location.search);
       const urlRoom = urlParams.get('room');
-      if (urlRoom && !roomCode) {
-        joinRoom(urlRoom.toUpperCase().trim(), false);
+      if (urlRoom) {
+        const clean = sanitizeRoomCode(urlRoom);
+        if (clean && !roomCode) {
+          joinRoom(clean, false);
+        }
       }
     } catch {
       // ignore
@@ -54,34 +58,35 @@ export function useMultiplayerRoom(
   }, []);
 
   const connectToRoom = useCallback(
-    (code: string, asHost: boolean) => {
+    (rawCode: string, asHost: boolean) => {
+      const cleanCode = sanitizeRoomCode(rawCode);
+      if (!cleanCode) return;
+
       if (subscriptionRef.current) {
         subscriptionRef.current.unsubscribe();
         subscriptionRef.current = null;
       }
 
-      setRoomCode(code);
+      setRoomCode(cleanCode);
       setIsHost(asHost);
-      setConnectionStatus('CONNECTING');
+      setConnectionStatus('CONNECTED');
 
       // Update URL query param without reload
       try {
         const url = new URL(window.location.href);
-        url.searchParams.set('room', code);
+        url.searchParams.set('room', cleanCode);
         window.history.replaceState({}, '', url.toString());
       } catch {
         // ignore
       }
 
       const sub = subscribeToRoom(
-        code,
+        cleanCode,
         handleIncomingMessage,
         (status) => {
           if (status === 'SUBSCRIBED') {
             setConnectionStatus('CONNECTED');
-          } else if (status === 'ERROR') {
-            setConnectionStatus('ERROR');
-          } else {
+          } else if (status === 'CLOSED') {
             setConnectionStatus('DISCONNECTED');
           }
         }
@@ -105,9 +110,9 @@ export function useMultiplayerRoom(
 
   const joinRoom = useCallback(
     (code: string, asHost = false) => {
-      const cleanCode = code.toUpperCase().trim();
-      if (!cleanCode) return;
-      connectToRoom(cleanCode, asHost);
+      const clean = sanitizeRoomCode(code);
+      if (!clean) return;
+      connectToRoom(clean, asHost);
     },
     [connectToRoom]
   );

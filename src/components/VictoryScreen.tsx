@@ -1,8 +1,8 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { type Agent, type Role } from "@/data/valorant";
-import { Sword, Shield, Target, Users, RefreshCw, Trophy, Image as ImageIcon } from "lucide-react";
+import { Sword, Shield, Target, Users, RefreshCw, Trophy, Image as ImageIcon, Copy, Check } from "lucide-react";
 import { Button } from "./ui/button";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { type PlayerProfile } from "@/types/player";
 
@@ -68,6 +68,20 @@ export function VictoryScreen({
   onShareCard,
   profiles,
 }: VictoryScreenProps) {
+  const [copiedText, setCopiedText] = useState(false);
+
+  const handleCopyTextComp = () => {
+    const lines = ['🎮 VALOMIZE RANDOMIZER SQUAD:'];
+    players.forEach((p, idx) => {
+      const agent = assignments[idx];
+      const status = playerStatuses[idx];
+      const tag = status === 'MVP' ? ' 👑 [MVP]' : status === 'BOTTOM' ? ' 💀 [Bot Frag]' : '';
+      lines.push(`• ${p}: ${agent ? `${agent.name} (${agent.role})` : 'Random'}${tag}`);
+    });
+    navigator.clipboard.writeText(lines.join('\n'));
+    setCopiedText(true);
+    setTimeout(() => setCopiedText(false), 2500);
+  };
   // Count roles for composition display
   const roleCount = useMemo(() => {
     const counts: Record<Role, number> = {
@@ -280,12 +294,28 @@ export function VictoryScreen({
               {onShareCard && (
                 <Button
                   onClick={onShareCard}
-                  className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-6 py-3 flex items-center gap-2 shadow-lg shadow-cyan-500/30 border border-cyan-400/40"
+                  className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-5 py-3 flex items-center gap-2 shadow-lg shadow-cyan-500/30 border border-cyan-400/40"
                 >
                   <ImageIcon className="h-5 w-5" />
                   แชร์การ์ด (Share Card)
                 </Button>
               )}
+              <Button
+                onClick={handleCopyTextComp}
+                variant="outline"
+                className="border-zinc-700 bg-zinc-900/80 hover:bg-zinc-800 text-white font-bold px-4 py-3 flex items-center gap-2 shadow"
+                title="คัดลอกรายชื่อตัวละครเป็นข้อความไปวางใน Discord"
+              >
+                {copiedText ? (
+                  <>
+                    <Check className="h-4 w-4 text-emerald-400" /> คัดลอกข้อความแล้ว!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-4 w-4 text-zinc-400" /> คัดลอกเป็นข้อความ
+                  </>
+                )}
+              </Button>
               <Button
                 onClick={onPlayAgain}
                 className="bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-3 flex items-center gap-2 shadow-lg shadow-red-500/30"

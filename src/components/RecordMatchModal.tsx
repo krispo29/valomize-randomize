@@ -239,6 +239,31 @@ export function RecordMatchModal({
                   </div>
                 </div>
               </div>
+
+              {/* 1-Click Score Presets (QoL Feature) */}
+              <div className="mt-3 pt-3 border-t border-zinc-800/80 flex flex-wrap items-center justify-center gap-1.5">
+                <span className="text-[11px] text-zinc-500 font-bold uppercase mr-1">สกอร์ด่วน:</span>
+                {[
+                  { label: '13-5 (ขาดลอย)', t: 13, e: 5, r: 'WIN' as const },
+                  { label: '13-9 (สวยงาม)', t: 13, e: 9, r: 'WIN' as const },
+                  { label: '13-11 (สูสี)', t: 13, e: 11, r: 'WIN' as const },
+                  { label: '14-12 (Overtime)', t: 14, e: 12, r: 'WIN' as const },
+                  { label: '9-13 (พ่ายแพ้)', t: 9, e: 13, r: 'LOSS' as const },
+                ].map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => {
+                      setScoreTeam(preset.t);
+                      setScoreEnemy(preset.e);
+                      setResult(preset.r);
+                    }}
+                    className="px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-[11px] font-bold text-zinc-300 transition"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Real Match MVP Picker */}

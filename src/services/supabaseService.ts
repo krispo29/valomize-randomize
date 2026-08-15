@@ -9,6 +9,25 @@ export interface SupabaseConfig {
   anonKey: string;
 }
 
+export function sanitizeRoomCode(raw: string): string {
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  try {
+    if (trimmed.includes('?room=')) {
+      const url = new URL(trimmed.startsWith('http') ? trimmed : `https://valomize.app/${trimmed}`);
+      const r = url.searchParams.get('room');
+      if (r) return r.toUpperCase().trim();
+    }
+  } catch {
+    // ignore
+  }
+  const match = trimmed.match(/VALO-[A-Z0-9]+/i);
+  if (match) {
+    return match[0].toUpperCase();
+  }
+  return trimmed.replace(/[^a-zA-Z0-9-]/g, '').toUpperCase();
+}
+
 export function getSupabaseConfig(): SupabaseConfig {
   try {
     const saved = localStorage.getItem(SUPABASE_CONFIG_KEY);
@@ -71,19 +90,21 @@ export function resetSupabaseClient(): void {
 }
 
 export function subscribeToRoom(
-  roomCode: string,
+  rawRoomCode: string,
   onMessage: (msg: MultiplayerSyncMessage) => void,
   onStatusChange?: (status: 'SUBSCRIBED' | 'CLOSED' | 'ERROR') => void
 ): { unsubscribe: () => void } {
-  // 1. Setup Local Tab-to-Tab BroadcastChannel for instant local sync
+  const cleanCode = sanitizeRoomCode(rawRoomCode);
+
+  // 1. Setup Local Tab-to-Tab BroadcastChannel for instant zero-latency sync
   try {
     if (typeof BroadcastChannel !== 'undefined') {
       if (localBroadcastChannel) {
         localBroadcastChannel.close();
       }
-      localBroadcastChannel = new BroadcastChannel(`valomize_room_${roomCode}`);
+      localBroadcastChannel = new BroadcastChannel(`valomize_room_${cleanCode}`);
       localBroadcastChannel.onmessage = (event) => {
-        if (event.data && event.data.roomCode === roomCode) {
+        if (event.data && sanitizeRoomCode(event.data.roomCode) === cleanCode) {
           onMessage(event.data);
         }
       };
@@ -91,6 +112,9 @@ export function subscribeToRoom(
   } catch {
     // ignore
   }
+
+  // Notify immediately that local channel is ready
+  onStatusChange?.('SUBSCRIBED');
 
   // 2. Setup Supabase Realtime Channel (if configured)
   const client = getSupabase();
@@ -100,7 +124,10 @@ export function subscribeToRoom(
         currentChannel.unsubscribe();
       }
 
-      const channel = client.channel(`valo_room_${roomCode}`, {
+      // Safe clean channel name without colons or slashes
+      const safeChannelName = `room_${cleanCode.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+
+      const channel = client.channel(safeChannelName, {
         config: {
           broadcast: { self: false },
           presence: { key: `member_${Math.random().toString(36).substring(2, 7)}` },
@@ -118,18 +145,13 @@ export function subscribeToRoom(
             onStatusChange?.('SUBSCRIBED');
           } else if (status === 'CLOSED') {
             onStatusChange?.('CLOSED');
-          } else if (status === 'CHANNEL_ERROR') {
-            onStatusChange?.('ERROR');
           }
         });
 
       currentChannel = channel;
     } catch {
-      onStatusChange?.('SUBSCRIBED'); // Local broadcast channel fallback is active
+      onStatusChange?.('SUBSCRIBED');
     }
-  } else {
-    // If Supabase is not yet configured, local broadcast works 100%
-    onStatusChange?.('SUBSCRIBED');
   }
 
   return {
@@ -147,13 +169,19 @@ export function subscribeToRoom(
 }
 
 export async function broadcastRoomMessage(
-  _roomCode: string,
+  rawRoomCode: string,
   message: MultiplayerSyncMessage
 ): Promise<void> {
+  const cleanCode = sanitizeRoomCode(rawRoomCode);
+  const cleanMessage = {
+    ...message,
+    roomCode: cleanCode,
+  };
+
   // 1. Send via local BroadcastChannel
   try {
     if (localBroadcastChannel) {
-      localBroadcastChannel.postMessage(message);
+      localBroadcastChannel.postMessage(cleanMessage);
     }
   } catch {
     // ignore
@@ -165,7 +193,7 @@ export async function broadcastRoomMessage(
       await currentChannel.send({
         type: 'broadcast',
         event: 'room_event',
-        payload: message,
+        payload: cleanMessage,
       });
     }
   } catch {
@@ -178,14 +206,18 @@ export async function broadcastStateSync(
   sender: string,
   state: RoomState
 ): Promise<void> {
+  const cleanCode = sanitizeRoomCode(roomCode);
   const msg: MultiplayerSyncMessage = {
     type: 'STATE_SYNC',
-    roomCode,
+    roomCode: cleanCode,
     sender,
     timestamp: Date.now(),
-    payload: state,
+    payload: {
+      ...state,
+      roomCode: cleanCode,
+    },
   };
-  await broadcastRoomMessage(roomCode, msg);
+  await broadcastRoomMessage(cleanCode, msg);
 }
 
 export async function broadcastMatchRecorded(
@@ -193,12 +225,13 @@ export async function broadcastMatchRecorded(
   sender: string,
   match: MatchRecord
 ): Promise<void> {
+  const cleanCode = sanitizeRoomCode(roomCode);
   const msg: MultiplayerSyncMessage = {
     type: 'MATCH_RECORDED',
-    roomCode,
+    roomCode: cleanCode,
     sender,
     timestamp: Date.now(),
     payload: match,
   };
-  await broadcastRoomMessage(roomCode, msg);
+  await broadcastRoomMessage(cleanCode, msg);
 }

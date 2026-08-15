@@ -429,6 +429,37 @@ function App() {
           </motion.div>
         </header>
 
+        {/* Live Multiplayer Room Active Banner (QoL Notification) */}
+        {isInRoom && (
+          <div className="mb-6 mx-auto w-full max-w-xl">
+            <div
+              className={`p-2.5 px-4 rounded-xl border flex items-center justify-between gap-3 text-xs shadow-lg backdrop-blur-md ${
+                isHost
+                  ? 'bg-amber-950/40 border-amber-500/40 text-amber-200 shadow-amber-500/5'
+                  : 'bg-cyan-950/40 border-cyan-500/40 text-cyan-200 shadow-cyan-500/5'
+              }`}
+            >
+              <div className="flex items-center gap-2 truncate">
+                <span className="w-2 h-2 rounded-full bg-current animate-pulse shrink-0" />
+                <span className="font-bold truncate">
+                  {isHost
+                    ? `👑 คุณเป็นหัวห้อง ${roomCode} • การสุ่มของคุณจะถ่ายทอดสดให้เพื่อนทุกคน`
+                    : `👁️ คุณกำลังรับชมการสุ่มสดจากห้อง ${roomCode} (Spectator Mode)`}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowMultiplayerModal(true)}
+                  className="px-2.5 py-1 rounded bg-black/40 hover:bg-black/60 font-bold text-[11px] transition"
+                >
+                  จัดการห้อง
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Controls Area */}
         {phase === 'IDLE' && (
             <div className="mb-8">
