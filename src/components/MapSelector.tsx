@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { type ValorantMap, MAPS, MAP_META_AGENTS, MAP_IMAGES, AGENTS } from "@/data/valorant";
+import { type ValorantMap, MAPS, ACTIVE_COMPETITIVE_MAPS, MAP_META_AGENTS, MAP_IMAGES, AGENTS } from "@/data/valorant";
 import { valorantMeta2026 } from '@/data/meta';
 import { MapPin, Users, Shield, Sword, Target, ChevronDown, ChevronUp } from "lucide-react";
 
@@ -76,7 +76,15 @@ export function MapSelector({ selectedMap, onSelectMap, isExpanded, onToggleExpa
                     }}
                   />
                 </div>
-                <span className="relative z-10">{mapName}</span>
+                <span className="relative z-10 flex items-center justify-center gap-1.5">
+                  {mapName}
+                  {ACTIVE_COMPETITIVE_MAPS.includes(mapName) && (
+                    <span 
+                      className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)] shrink-0" 
+                      title="Active Competitive Pool (Champions 2026)" 
+                    />
+                  )}
+                </span>
                 {selectedMap === mapName && (
                   <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-zinc-900"></div>
                 )}
@@ -85,16 +93,29 @@ export function MapSelector({ selectedMap, onSelectMap, isExpanded, onToggleExpa
           </div>
           
           {!selectedMap && (
-            <p className="text-center text-[10px] text-zinc-600 mt-4 uppercase tracking-[0.2em]">
-              All agents available
+            <p className="text-center text-[10px] text-zinc-500 mt-4 uppercase tracking-[0.2em] flex items-center justify-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              Dot indicates Active Competitive Pool (VCT Champions 2026)
             </p>
           )}
 
           {selectedMap && (
             <div className="mt-6 p-4 bg-zinc-800/50 rounded-lg border border-zinc-700 animate-in fade-in zoom-in-95 duration-200">
-              <h4 className="text-sm font-bold text-red-400 uppercase tracking-wider mb-4">
-                Meta Agents for {selectedMap}
-              </h4>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                <h4 className="text-sm font-bold text-red-400 uppercase tracking-wider">
+                  Meta Agents for {selectedMap}
+                </h4>
+                {ACTIVE_COMPETITIVE_MAPS.includes(selectedMap) ? (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Active VCT Pool (Champions 2026)
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700 uppercase tracking-wider">
+                    Reserve / Rotated Pool
+                  </span>
+                )}
+              </div>
               
               <div className="space-y-4">
                 {/* Duelists */}

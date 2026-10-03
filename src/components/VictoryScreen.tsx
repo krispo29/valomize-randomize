@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { type Agent, type Role } from "@/data/valorant";
-import { Sword, Shield, Target, Users, RefreshCw, Trophy, Image as ImageIcon, Copy, Check } from "lucide-react";
+import { Sword, Shield, Target, Users, RefreshCw, Trophy, Image as ImageIcon, Copy, Check, MessageSquare } from "lucide-react";
 import { Button } from "./ui/button";
 import { useMemo, useState } from "react";
 
@@ -12,6 +12,7 @@ interface VictoryScreenProps {
   readonly assignments: Record<number, Agent | null>;
   readonly playerStatuses: Record<number, 'MVP' | 'BOTTOM' | null>;
   readonly shuffledOrder?: number[];
+  readonly mapName?: string;
   readonly onPlayAgain: () => void;
   readonly onClose: () => void;
   readonly onRecordMatch?: () => void;
@@ -62,6 +63,7 @@ export function VictoryScreen({
   assignments, 
   playerStatuses,
   shuffledOrder = [],
+  mapName,
   onPlayAgain, 
   onClose,
   onRecordMatch,
@@ -69,6 +71,7 @@ export function VictoryScreen({
   profiles,
 }: VictoryScreenProps) {
   const [copiedText, setCopiedText] = useState(false);
+  const [copiedInGame, setCopiedInGame] = useState(false);
 
   const handleCopyTextComp = () => {
     const lines = ['🎮 VALOMIZE RANDOMIZER SQUAD:'];
@@ -81,6 +84,18 @@ export function VictoryScreen({
     navigator.clipboard.writeText(lines.join('\n'));
     setCopiedText(true);
     setTimeout(() => setCopiedText(false), 2500);
+  };
+
+  const handleCopyInGameChat = () => {
+    const parts = players.map((p, idx) => {
+      const agent = assignments[idx];
+      return `${p} (${agent ? agent.name : '?'})`;
+    });
+    const mapStr = mapName ? `[${mapName}] ` : '';
+    const text = `VALOMIZE ${mapStr}> ${parts.join(' | ')}`;
+    navigator.clipboard.writeText(text);
+    setCopiedInGame(true);
+    setTimeout(() => setCopiedInGame(false), 2500);
   };
   // Count roles for composition display
   const roleCount = useMemo(() => {
@@ -301,6 +316,22 @@ export function VictoryScreen({
                 </Button>
               )}
               <Button
+                onClick={handleCopyInGameChat}
+                variant="outline"
+                className="border-amber-500/40 bg-zinc-900/90 hover:bg-amber-500/20 text-amber-300 font-bold px-4 py-3 flex items-center gap-2 shadow"
+                title="คัดลอกข้อความบรรทัดเดียวสำหรับกดวางในแชททีม Valorant ([VALOMIZE] Map > P1 (Agent) | ...)"
+              >
+                {copiedInGame ? (
+                  <>
+                    <Check className="h-4 w-4 text-emerald-400" /> คัดลอกแชทในเกมแล้ว!
+                  </>
+                ) : (
+                  <>
+                    <MessageSquare className="h-4 w-4 text-amber-400" /> ก๊อปวางในเกม (In-Game)
+                  </>
+                )}
+              </Button>
+              <Button
                 onClick={handleCopyTextComp}
                 variant="outline"
                 className="border-zinc-700 bg-zinc-900/80 hover:bg-zinc-800 text-white font-bold px-4 py-3 flex items-center gap-2 shadow"
@@ -312,7 +343,7 @@ export function VictoryScreen({
                   </>
                 ) : (
                   <>
-                    <Copy className="h-4 w-4 text-zinc-400" /> คัดลอกเป็นข้อความ
+                    <Copy className="h-4 w-4 text-zinc-400" /> คัดลอก Discord
                   </>
                 )}
               </Button>

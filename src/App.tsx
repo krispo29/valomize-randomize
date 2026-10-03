@@ -1,11 +1,14 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AgentCard } from '@/components/AgentCard';
 import { RoleSelector } from '@/components/RoleSelector';
 import { Button } from '@/components/ui/button';
 import { DEFAULT_FRIENDS, type Agent, type Role, type ValorantMap, MAP_META, MAP_ROLE_COMPOSITION } from '@/data/valorant';
 import { valorantMeta2026, type AgentStrategyProfile } from '@/data/meta';
-import { Shuffle, UserCog, Settings2, Map as MapIcon, Volume2, VolumeX, BarChart3, Trophy, Globe } from 'lucide-react';
+import { 
+  Shuffle, UserCog, Settings2, Map as MapIcon, Volume2, VolumeX, 
+  BarChart3, Trophy, Globe, Zap, Ban, Keyboard, Tv, Copy 
+} from 'lucide-react';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useSoundManager } from '@/hooks/useSoundManager';
@@ -22,6 +25,9 @@ import { RecordMatchModal } from '@/components/RecordMatchModal';
 import { PlayerProfilesModal } from '@/components/PlayerProfilesModal';
 import { MultiplayerModal } from '@/components/MultiplayerModal';
 import { ShareMatchCardModal } from '@/components/ShareMatchCardModal';
+import { AgentBlacklistModal } from '@/components/AgentBlacklistModal';
+import { PartyPresetsBar, PARTY_PRESETS } from '@/components/PartyPresetsBar';
+import { KeyboardShortcutsModal } from '@/components/KeyboardShortcutsModal';
 import jettLogo from '@/assets/jett_logo.png';
 
 const MapSelector = lazy(() => import('@/components/MapSelector').then(module => ({ default: module.MapSelector })));
@@ -120,8 +126,23 @@ function App() {
   const [gridIndices, setGridIndices] = useState<number[]>([]);
   const [revealedIndices, setRevealedIndices] = useState<Set<number>>(new Set());
 
+  // QoL States (Pillars 1 - 5)
+  const [isTurbo, setIsTurbo] = useLocalStorage<boolean>('valomize-turbo-mode', false);
+  const [isStreamerMode, setIsStreamerMode] = useLocalStorage<boolean>('valomize-streamer-mode', false);
+  const [pinnedIndices, setPinnedIndices] = useState<Set<number>>(new Set());
+  const [blacklistedAgents, setBlacklistedAgents] = useLocalStorage<string[]>('valomize-agent-blacklist', []);
+  const [activePartyPreset, setActivePartyPreset] = useState<string>('STANDARD');
+  const [showBlacklistModal, setShowBlacklistModal] = useState(false);
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const blacklistedSet = useMemo(() => new Set(blacklistedAgents), [blacklistedAgents]);
+
   // Sound manager
-  const { playRoll, stopRoll, playReveal, playVictory, playLock, isMuted, toggleMute } = useSoundManager();
+  const { 
+    playRoll, stopRoll, playReveal, playVictory, playLock, 
+    playInstantRoll, playClick, isMuted, toggleMute 
+  } = useSoundManager();
 
   // Initialize
   useEffect(() => {
@@ -140,26 +161,172 @@ function App() {
     }
   }, [friends, phase, gridIndices.length, friends.length]);
 
+  // Quick 1-click in-game chat copy helper
+  const copyInGameChatRoster = (assignmentsToUse = assignmentsByIndex) => {
+    playClick();
+    const parts = friends.map((p, idx) => {
+      const agent = assignmentsToUse[idx];
+      return `${p} (${agent ? agent.name : '?'})`;
+    });
+    const mapStr = selectedMap ? `[${selectedMap}] ` : '';
+    const text = `VALOMIZE ${mapStr}> ${parts.join(' | ')}`;
+    navigator.clipboard.writeText(text);
+    setToastMessage('📋 คัดลอกแชทในเกมเรียบร้อย! (กด Ctrl+V ใน Valorant ได้เลย)');
+    setTimeout(() => setToastMessage(null), 2500);
+  };
+
+  // Toggle agent pin/lock
+  const handleTogglePin = (index: number) => {
+    playClick();
+    setPinnedIndices(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  };
+
+  // Re-roll single player
+  const handleRerollSingle = (playerIndex: number) => {
+    if (phase !== 'IDLE') return;
+    playClick();
+
+    const currentAgent = assignmentsByIndex[playerIndex];
+    const usedAgentNames = new Set(
+      Object.entries(assignmentsByIndex)
+        .filter(([idx]) => Number(idx) !== playerIndex)
+        .map(([_, a]) => a?.name)
+        .filter((name): name is string => Boolean(name))
+    );
+
+    const activeBaseAgents = liveAgents.filter(a => !blacklistedSet.has(a.name));
+    const pool = activeBaseAgents.length >= 5 ? activeBaseAgents : liveAgents;
+
+    // Determine role preference
+    const status = playerStatuses[playerIndex];
+    let preferredRole: Role | null = null;
+    if (status === 'BOTTOM') preferredRole = 'Duelist';
+    else if (status === 'MVP') preferredRole = mvpRoleChoices[playerIndex] || null;
+    else if (currentAgent) preferredRole = currentAgent.role;
+
+    // Filter available candidates
+    let candidates = pool.filter(a => !usedAgentNames.has(a.name) && a.name !== currentAgent?.name);
+    if (preferredRole) {
+      const roleCandidates = candidates.filter(a => a.role === preferredRole);
+      if (roleCandidates.length > 0) candidates = roleCandidates;
+    }
+
+    if (candidates.length === 0) {
+      candidates = pool.filter(a => !usedAgentNames.has(a.name));
+    }
+
+    if (candidates.length > 0) {
+      const picked = candidates[Math.floor(Math.random() * candidates.length)];
+      const updatedAssignments = {
+        ...assignmentsByIndex,
+        [playerIndex]: picked
+      };
+      setAssignmentsByIndex(updatedAssignments);
+      playReveal();
+
+      if (isInRoom && isHost && roomCode) {
+        broadcastState({
+          roomCode,
+          hostName: friends[0] || 'Host',
+          createdAt: Date.now(),
+          friends,
+          profiles,
+          selectedMap,
+          playerStatuses,
+          mvpRoleChoices,
+          rolesCount,
+          assignmentsByIndex: updatedAssignments,
+          phase: 'IDLE',
+          revealedIndices: Array.from(revealedIndices),
+          deckIndices: [],
+          gridIndices,
+          showVictory,
+          lastUpdated: Date.now(),
+        });
+      }
+    }
+  };
 
   const calculateAssignments = () => {
       const final: Record<number, Agent> = {};
       const assignedIndices = new Set<number>();
       const usedAgentNames = new Set<string>();
-      
-      const currentPool = selectedMap 
-          ? liveAgents.filter(a => new Set(MAP_META[selectedMap]).has(a.name))
-          : liveAgents;
 
-      const roleRequirements: Record<Role, number> = selectedMap 
-          ? {
-              'Duelist': MAP_ROLE_COMPOSITION[selectedMap].duelists,
-              'Controller': MAP_ROLE_COMPOSITION[selectedMap].controllers,
-              'Initiator': MAP_ROLE_COMPOSITION[selectedMap].initiators,
-              'Sentinel': MAP_ROLE_COMPOSITION[selectedMap].sentinels
+      // 0. Filter out blacklisted agents
+      const activeBaseAgents = liveAgents.filter(a => !blacklistedSet.has(a.name));
+      const availablePool = activeBaseAgents.length >= 5 ? activeBaseAgents : liveAgents;
+
+      // 0.1 Honor Pinned / Locked Agents
+      pinnedIndices.forEach(pinnedIndex => {
+        const existing = assignmentsByIndex[pinnedIndex];
+        if (existing && !usedAgentNames.has(existing.name)) {
+          final[pinnedIndex] = existing;
+          assignedIndices.add(pinnedIndex);
+          usedAgentNames.add(existing.name);
+        }
+      });
+
+      // Check party preset
+      const currentPreset = PARTY_PRESETS.find(p => p.id === activePartyPreset);
+      const isPureRandom = currentPreset?.isPureRandom;
+
+      if (isPureRandom) {
+        const unassigned = friends.map((_, i) => i).filter(i => !assignedIndices.has(i));
+        const candidates = availablePool.filter(a => !usedAgentNames.has(a.name)).sort(() => 0.5 - Math.random());
+        unassigned.forEach((pIdx, i) => {
+          if (candidates[i]) {
+            final[pIdx] = candidates[i];
+            usedAgentNames.add(candidates[i].name);
+          } else {
+            const fallback = availablePool.filter(a => !usedAgentNames.has(a.name));
+            if (fallback.length > 0) {
+              const pick = fallback[Math.floor(Math.random() * fallback.length)];
+              final[pIdx] = pick;
+              usedAgentNames.add(pick.name);
+            }
           }
-          : rolesCount;
+        });
+        return final;
+      }
+
+      const currentMapPool = selectedMap 
+          ? availablePool.filter(a => new Set(MAP_META[selectedMap]).has(a.name))
+          : availablePool;
+      const currentPool = currentMapPool.length >= 5 ? currentMapPool : availablePool;
+
+      // Determine target role requirements
+      let roleRequirements: Record<Role, number>;
+      if (currentPreset?.roleRequirements) {
+        roleRequirements = { 'Duelist': 0, 'Controller': 0, 'Initiator': 0, 'Sentinel': 0 };
+        currentPreset.roleRequirements.forEach(r => { roleRequirements[r]++; });
+      } else if (selectedMap) {
+        roleRequirements = {
+          'Duelist': MAP_ROLE_COMPOSITION[selectedMap].duelists,
+          'Controller': MAP_ROLE_COMPOSITION[selectedMap].controllers,
+          'Initiator': MAP_ROLE_COMPOSITION[selectedMap].initiators,
+          'Sentinel': MAP_ROLE_COMPOSITION[selectedMap].sentinels
+        };
+      } else {
+        roleRequirements = rolesCount;
+      }
 
       const remainingRoleCounts = { ...roleRequirements };
+
+      // Deduct pinned agents from remaining requirements
+      assignedIndices.forEach(idx => {
+        const a = final[idx];
+        if (a && remainingRoleCounts[a.role] > 0) {
+          remainingRoleCounts[a.role]--;
+        }
+      });
 
       const pickAgent = (role: Role, excludeNames: Set<string>, pool: Agent[]): Agent | null => {
           const candidates = pool.filter(a => a.role === role && !excludeNames.has(a.name));
@@ -168,8 +335,10 @@ function App() {
               : null;
       };
 
-      // 1. Handle Forced Assignments
+      // 1. Handle Forced Assignments (MVP / Bottom Frag) for unassigned
       friends.forEach((_, index) => {
+          if (assignedIndices.has(index)) return;
+
           const status = playerStatuses[index];
           let roleToForce: Role | null = null;
 
@@ -181,7 +350,7 @@ function App() {
 
           if (roleToForce) {
               let agent = pickAgent(roleToForce, usedAgentNames, currentPool);
-              agent ??= pickAgent(roleToForce, usedAgentNames, liveAgents);
+              agent ??= pickAgent(roleToForce, usedAgentNames, availablePool);
               
               if (agent) {
                   final[index] = agent;
@@ -198,10 +367,12 @@ function App() {
          const specificRole = role as Role;
          for (let i = 0; i < count; i++) {
              let agent = pickAgent(specificRole, usedAgentNames, currentPool);
-             agent ??= pickAgent(specificRole, usedAgentNames, liveAgents);
+             agent ??= pickAgent(specificRole, usedAgentNames, availablePool);
              if (!agent) {
-                  const anyCandidates = liveAgents.filter(a => a.role === specificRole);
-                  agent = anyCandidates[Math.floor(Math.random() * anyCandidates.length)];
+                  const anyCandidates = availablePool.filter(a => a.role === specificRole && !usedAgentNames.has(a.name));
+                  agent = anyCandidates.length > 0 
+                    ? anyCandidates[Math.floor(Math.random() * anyCandidates.length)]
+                    : null;
              }
 
              if (agent) {
@@ -215,7 +386,7 @@ function App() {
       const remainingSlotsNeeded = friends.length - assignedIndices.size - requiredPool.length;
       if (remainingSlotsNeeded > 0) {
          const availableMeta = currentPool.filter(a => !usedAgentNames.has(a.name));
-         const availableAll = liveAgents.filter(a => !usedAgentNames.has(a.name));
+         const availableAll = availablePool.filter(a => !usedAgentNames.has(a.name));
          const poolSource = availableMeta.length >= remainingSlotsNeeded ? availableMeta : availableAll;
          
          const shuffledPoolSource = [...poolSource].sort(() => 0.5 - Math.random());
@@ -225,12 +396,17 @@ function App() {
                  requiredPool.push(shuffledPoolSource[i]);
                  usedAgentNames.add(shuffledPoolSource[i].name);
              } else {
-                 requiredPool.push(liveAgents[Math.floor(Math.random() * liveAgents.length)]);
+                 const fallbackPool = availablePool.filter(a => !usedAgentNames.has(a.name));
+                 if (fallbackPool.length > 0) {
+                   const fallback = fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
+                   requiredPool.push(fallback);
+                   usedAgentNames.add(fallback.name);
+                 }
              }
          }
       }
 
-      // 4. Assign remaining
+      // 4. Assign remaining players
       const shuffledPool = [...requiredPool].sort(() => 0.5 - Math.random());
       
       const unassignedPlayerIndices = friends
@@ -252,6 +428,50 @@ function App() {
   const handleRollSafe = async () => {
     if (phase !== 'IDLE') return;
     
+    // TURBO MODE: 0.1s instant roll, skips deal animation
+    if (isTurbo) {
+      playInstantRoll();
+      setPhase('GATHERING');
+      setEditMode(false);
+      setShowSettings(false);
+      setShowMapSelector(false);
+      setShowVictory(false);
+
+      const allIndices = friends.map((_, i) => i);
+      setGridIndices(allIndices);
+      setDeckIndices([]);
+
+      const results = calculateAssignments();
+      setAssignmentsByIndex(results);
+      setRevealedIndices(new Set(allIndices));
+
+      if (isInRoom && isHost && roomCode) {
+        broadcastState({
+          roomCode,
+          hostName: friends[0] || 'Host',
+          createdAt: Date.now(),
+          friends,
+          profiles,
+          selectedMap,
+          playerStatuses,
+          mvpRoleChoices,
+          rolesCount,
+          assignmentsByIndex: results,
+          phase: 'IDLE',
+          revealedIndices: allIndices,
+          deckIndices: [],
+          gridIndices: allIndices,
+          showVictory: true,
+          lastUpdated: Date.now(),
+        });
+      }
+
+      await new Promise(r => setTimeout(r, 120));
+      setPhase('IDLE');
+      setShowVictory(true);
+      return;
+    }
+
     // 0. Setup
     setEditMode(false);
     setShowSettings(false);
@@ -413,41 +633,225 @@ function App() {
     });
   };
 
+  // Keyboard Shortcuts Listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        setShowVictory(false);
+        setShowStatsDashboard(false);
+        setShowRecordMatch(false);
+        setShowShareCardModal(false);
+        setShowProfilesModal(false);
+        setShowMultiplayerModal(false);
+        setShowBlacklistModal(false);
+        setShowShortcutsModal(false);
+        setShowMapSelector(false);
+        setShowSettings(false);
+        return;
+      }
+
+      const isAnyModalOpen = showStatsDashboard || showRecordMatch || showShareCardModal || 
+        showProfilesModal || showMultiplayerModal || showBlacklistModal || showShortcutsModal;
+
+      if (isAnyModalOpen) return;
+
+      if (e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        if (showVictory) {
+          setShowVictory(false);
+        } else if (phase === 'IDLE') {
+          handleRollSafe();
+        }
+      } else if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        if (phase === 'IDLE') {
+          handleRollSafe();
+        }
+      } else if (e.key === 't' || e.key === 'T') {
+        e.preventDefault();
+        setIsTurbo(prev => !prev);
+        playClick();
+      } else if (e.key === 'm' || e.key === 'M') {
+        e.preventDefault();
+        setShowMapSelector(prev => !prev);
+        playClick();
+      } else if (e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        setShowStatsDashboard(prev => !prev);
+        playClick();
+      } else if (e.key === 'b' || e.key === 'B') {
+        e.preventDefault();
+        setShowBlacklistModal(prev => !prev);
+        playClick();
+      } else if (e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        if (Object.keys(assignmentsByIndex).length > 0) {
+          copyInGameChatRoster();
+        }
+      } else if (e.key === '?') {
+        e.preventDefault();
+        setShowShortcutsModal(prev => !prev);
+        playClick();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    phase, showVictory, showStatsDashboard, showRecordMatch, showShareCardModal, 
+    showProfilesModal, showMultiplayerModal, showBlacklistModal, showShortcutsModal,
+    assignmentsByIndex, friends, selectedMap, isTurbo
+  ]);
+
+
   return (
     <div className="min-h-screen bg-[#0f1923] text-white font-sans overflow-x-hidden relative flex flex-col">
       {/* Background Elements */}
       <div className="absolute top-0 right-0 w-1/2 h-full bg-red-600/10 skew-x-[-20deg] pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-1/3 h-1/2 bg-red-500/5 skew-x-[20deg] pointer-events-none" />
       
-      <div className="container mx-auto py-10 px-4 relative z-10 flex-grow flex flex-col">
-        <header className="flex flex-col items-center mb-8">
-          <motion.div className="flex items-center gap-4">
-               <motion.img 
-                src={jettLogo} 
-                alt="Jett Logo" 
-                className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-[0_0_15px_rgba(220,38,38,0.5)]"
-                initial={{ scale: 0, opacity: 0, rotate: -180 }}
-                animate={{ scale: 1, opacity: 1, rotate: 0 }}
-              />
-              <div className="flex flex-col">
-                <motion.h1 
-                    className="text-4xl md:text-6xl font-black uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-red-500 to-red-800 drop-shadow-sm select-none"
-                    initial={{ y: -50, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                >
-                    VALOMIZE
-                </motion.h1>
-                <motion.p 
-                    className="text-sm md:text-xl font-bold tracking-widest uppercase text-white/50 select-none"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.2 }}
-                >
-                    Randomizer
-                </motion.p>
-              </div>
-          </motion.div>
-        </header>
+      <div className="container mx-auto py-6 px-4 relative z-10 flex-grow flex flex-col">
+        {/* Floating Toast Notification */}
+        <AnimatePresence>
+          {toastMessage && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="fixed top-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-zinc-900/95 border border-emerald-500/70 text-emerald-300 text-xs sm:text-sm font-bold rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-2"
+            >
+              <span>{toastMessage}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Top Mini HUD Bar: Streamer mode, Turbo toggle, Blacklist, Shortcuts */}
+        <div className="w-full flex items-center justify-between pb-3 border-b border-white/5 mb-4 text-xs">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setIsStreamerMode(prev => !prev);
+                playClick();
+              }}
+              className={`px-2.5 py-1.5 rounded-lg border font-bold flex items-center gap-1.5 transition active:scale-95 ${
+                isStreamerMode
+                  ? 'bg-purple-950/80 border-purple-500 text-purple-300 shadow-[0_0_12px_rgba(168,85,247,0.3)]'
+                  : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-white'
+              }`}
+              title="โหมดสตรีมเมอร์ (ย่อหน้าจอให้พอดีกับ OBS / Discord)"
+            >
+              <Tv className="w-3.5 h-3.5" />
+              <span>{isStreamerMode ? 'Streamer HUD' : 'Normal HUD'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setIsTurbo(prev => !prev);
+                playClick();
+              }}
+              className={`px-2.5 py-1.5 rounded-lg border font-bold flex items-center gap-1.5 transition active:scale-95 ${
+                isTurbo
+                  ? 'bg-amber-950/80 border-amber-500 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.3)]'
+                  : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-white'
+              }`}
+              title="โหมดสุ่มด่วนใน 0.1 วินาที (ข้ามอนิเมชั่น) [Hotkey: T]"
+            >
+              <Zap className={`w-3.5 h-3.5 ${isTurbo ? 'fill-amber-400' : ''}`} />
+              <span>{isTurbo ? 'Turbo: ON (0.1s)' : 'Turbo: OFF'}</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Copy in-game chat string shortcut button */}
+            {Object.keys(assignmentsByIndex).length > 0 && (
+              <button
+                type="button"
+                onClick={() => copyInGameChatRoster()}
+                className="px-2.5 py-1.5 rounded-lg border bg-zinc-900/80 border-amber-500/40 text-amber-300 hover:bg-amber-500/20 font-bold flex items-center gap-1.5 transition active:scale-95"
+                title="คัดลอกรายชื่อไปวางในแชทเกม Valorant [Hotkey: C]"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">ก๊อปแชทเกม (C)</span>
+              </button>
+            )}
+
+            {/* Blacklist Modal button */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowBlacklistModal(true);
+                playClick();
+              }}
+              className={`px-2.5 py-1.5 rounded-lg border font-bold flex items-center gap-1.5 transition active:scale-95 ${
+                blacklistedAgents.length > 0
+                  ? 'bg-red-950/60 border-red-500/60 text-red-300'
+                  : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-white'
+              }`}
+              title="ตัดตัวละครที่ยังไม่ปลดล็อค หรือแบนไม่ให้สุ่ม [Hotkey: B]"
+            >
+              <Ban className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Blacklist</span>
+              {blacklistedAgents.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black">
+                  -{blacklistedAgents.length}
+                </span>
+              )}
+            </button>
+
+            {/* Shortcuts Guide button */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowShortcutsModal(true);
+                playClick();
+              }}
+              className="px-2.5 py-1.5 rounded-lg border bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-white font-bold flex items-center gap-1.5 transition active:scale-95"
+              title="ดูคีย์ลัดทั้งหมด [Hotkey: ?]"
+            >
+              <Keyboard className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Keys (?)</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Brand Header (Hidden in Streamer Mode for ultra-clean capture) */}
+        {!isStreamerMode && (
+          <header className="flex flex-col items-center mb-6">
+            <motion.div className="flex items-center gap-4">
+                 <motion.img 
+                  src={jettLogo} 
+                  alt="Jett Logo" 
+                  className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-[0_0_15px_rgba(220,38,38,0.5)]"
+                  initial={{ scale: 0, opacity: 0, rotate: -180 }}
+                  animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                />
+                <div className="flex flex-col">
+                  <motion.h1 
+                      className="text-4xl md:text-6xl font-black uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-red-500 to-red-800 drop-shadow-sm select-none"
+                      initial={{ y: -50, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                  >
+                      VALOMIZE
+                  </motion.h1>
+                  <motion.p 
+                      className="text-sm md:text-xl font-bold tracking-widest uppercase text-white/50 select-none"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.2 }}
+                  >
+                      Randomizer
+                  </motion.p>
+                </div>
+            </motion.div>
+          </header>
+        )}
 
         {/* Live Multiplayer Room Active Banner (QoL Notification) */}
         {isInRoom && (
@@ -540,13 +944,23 @@ function App() {
                     </motion.div>
                 )}
 
+                {/* Party Presets Bar */}
+                <PartyPresetsBar
+                  activePresetId={activePartyPreset}
+                  onSelectPreset={(presetId) => {
+                    setActivePartyPreset(presetId);
+                    playClick();
+                  }}
+                  className="mb-4"
+                />
+
                 {/* Buttons */}
-                <div className="flex flex-wrap justify-center gap-2 md:gap-4">
+                <div className="flex flex-wrap justify-center gap-2 md:gap-4 items-center">
                     <Button
                         variant="outline"
                         onClick={() => { setShowMapSelector(!showMapSelector); if (!showMapSelector) setShowSettings(false); }}
                         className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${(showMapSelector || selectedMap) ? 'border-red-500 bg-zinc-700' : ''}`}
-                        title="Map Meta Selection"
+                        title="Map Meta Selection (M)"
                         aria-label={showMapSelector ? "Hide map selector" : "Show map selector"}
                     >
                         <MapIcon className={`h-6 w-6 ${selectedMap ? 'text-red-400' : ''}`} />
@@ -555,10 +969,15 @@ function App() {
                     <Button 
                         size="lg" 
                         onClick={handleRollSafe} 
-                        className="bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest px-6 py-6 md:px-10 md:py-8 text-lg md:text-xl rounded-sm shadow-[0_0_20px_rgba(220,38,38,0.5)] transition-all transform hover:scale-105 active:scale-95"
+                        className={`font-black uppercase tracking-widest px-6 py-6 md:px-10 md:py-8 text-lg md:text-xl rounded-sm transition-all transform hover:scale-105 active:scale-95 ${
+                          isTurbo 
+                            ? 'bg-gradient-to-r from-amber-600 to-red-600 hover:from-amber-500 hover:to-red-500 text-white shadow-[0_0_25px_rgba(245,158,11,0.6)]' 
+                            : 'bg-red-600 hover:bg-red-700 text-white shadow-[0_0_20px_rgba(220,38,38,0.5)]'
+                        }`}
+                        title="กดปุ่ม [Spacebar] หรือคลิกเพื่อสุ่มตัวละคร"
                     >
-                        <Shuffle className="mr-2 h-5 w-5 md:h-6 md:w-6" />
-                        RANDOMIZE AGENTS
+                        {isTurbo ? <Zap className="mr-2 h-6 w-6 fill-amber-400 animate-pulse" /> : <Shuffle className="mr-2 h-5 w-5 md:h-6 md:w-6" />}
+                        {isTurbo ? '⚡ TURBO ROLL (0.1s)' : 'RANDOMIZE AGENTS'}
                     </Button>
                     
                     <div className="flex gap-2 h-auto">
@@ -742,6 +1161,9 @@ function App() {
                                         rankIcon={profiles[index]?.rankIcon}
                                         rankName={profiles[index]?.rankName}
                                         onOpenProfileModal={() => setShowProfilesModal(true)}
+                                        isPinned={pinnedIndices.has(index)}
+                                        onTogglePin={() => handleTogglePin(index)}
+                                        onRerollSingle={() => handleRerollSingle(index)}
                                     />
                                 </motion.div>
                             )}
@@ -758,6 +1180,7 @@ function App() {
 		  playerStatuses={playerStatuses}
           shuffledOrder={friends.map((_, i) => i)}
           profiles={profiles}
+          mapName={selectedMap || undefined}
           onPlayAgain={() => {
             setShowVictory(false);
             setPhase('IDLE');
@@ -827,6 +1250,31 @@ function App() {
           playerStatuses={playerStatuses}
           selectedMap={selectedMap}
           profiles={profiles}
+        />
+
+        <AgentBlacklistModal
+          isOpen={showBlacklistModal}
+          onClose={() => setShowBlacklistModal(false)}
+          blacklistedAgents={blacklistedSet}
+          onToggleAgent={(agentName) => {
+            playClick();
+            setBlacklistedAgents(prev => 
+              prev.includes(agentName) ? prev.filter(n => n !== agentName) : [...prev, agentName]
+            );
+          }}
+          onResetBlacklist={() => {
+            playClick();
+            setBlacklistedAgents([]);
+          }}
+          onSetBlacklist={(names) => {
+            playClick();
+            setBlacklistedAgents(names);
+          }}
+        />
+
+        <KeyboardShortcutsModal
+          isOpen={showShortcutsModal}
+          onClose={() => setShowShortcutsModal(false)}
         />
         
         {editMode && (

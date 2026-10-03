@@ -7,6 +7,8 @@ interface SoundManagerReturn {
   playReveal: () => void;
   playLock: () => void;
   playVictory: () => void;
+  playInstantRoll: () => void;
+  playClick: () => void;
   isMuted: boolean;
   toggleMute: () => void;
   volume: number;
@@ -62,6 +64,39 @@ const playLockSound = (audioContext: AudioContext, volume: number): void => {
   setTimeout(() => {
     createOscillatorSound(audioContext, 1200, 0.12, 'sine', volume * 0.3);
   }, 50);
+};
+
+// Tactical Instant Roll (punchy whoosh / bass drop)
+const playInstantRollSound = (audioContext: AudioContext, volume: number): void => {
+  const osc = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+  const now = audioContext.currentTime;
+
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(400, now);
+  osc.frequency.exponentialRampToValueAtTime(60, now + 0.22);
+
+  gain.gain.setValueAtTime(volume * 0.6, now);
+  gain.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
+
+  osc.connect(gain);
+  gain.connect(audioContext.destination);
+
+  osc.start(now);
+  osc.stop(now + 0.22);
+
+  // High shimmer accent
+  setTimeout(() => {
+    createOscillatorSound(audioContext, 880, 0.1, 'sine', volume * 0.3);
+    setTimeout(() => {
+      createOscillatorSound(audioContext, 1320, 0.15, 'sine', volume * 0.4);
+    }, 40);
+  }, 60);
+};
+
+// Tactical Click / Button press
+const playClickSound = (audioContext: AudioContext, volume: number): void => {
+  createOscillatorSound(audioContext, 1200, 0.03, 'triangle', volume * 0.25);
 };
 
 // Victory fanfare
@@ -123,6 +158,24 @@ export function useSoundManager(): SoundManagerReturn {
     playLockSound(ctx, volume);
   }, [getAudioContext, isMuted, volume]);
 
+  const playInstantRoll = useCallback(() => {
+    if (isMuted) return;
+    const ctx = getAudioContext();
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
+    playInstantRollSound(ctx, volume);
+  }, [getAudioContext, isMuted, volume]);
+
+  const playClick = useCallback(() => {
+    if (isMuted) return;
+    const ctx = getAudioContext();
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
+    playClickSound(ctx, volume);
+  }, [getAudioContext, isMuted, volume]);
+
   const playVictory = useCallback(() => {
     if (isMuted) return;
     const ctx = getAudioContext();
@@ -154,9 +207,12 @@ export function useSoundManager(): SoundManagerReturn {
     playReveal,
     playLock,
     playVictory,
+    playInstantRoll,
+    playClick,
     isMuted,
     toggleMute,
     volume,
     setVolume
   };
 }
+

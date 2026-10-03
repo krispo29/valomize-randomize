@@ -4,7 +4,7 @@ import { type AgentStrategyProfile } from "@/data/meta";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { LazyImage } from "@/components/LazyImage";
-import { Zap, Shield, Target, Users, Sparkles, Star, TrendingUp, TrendingDown, Minus, X, Info } from "lucide-react";
+import { Zap, Shield, Target, Users, Sparkles, Star, TrendingUp, TrendingDown, Minus, X, Info, Lock, Unlock, RotateCw } from "lucide-react";
 import { useState } from "react";
 
 // Type alias for player status
@@ -48,26 +48,28 @@ const getTrendIcon = (trend: string) => {
   }
 };
 
-const getCardClasses = (rolling: boolean, status: PlayerStatus, className?: string) => {
+const getCardClasses = (rolling: boolean, status: PlayerStatus, isPinned?: boolean, className?: string) => {
   return cn(
     "overflow-hidden border-2 bg-zinc-900 border-zinc-800 relative h-96 flex flex-col items-center justify-between shadow-lg transition-all duration-300",
     "will-change-transform backface-visibility-hidden transform-gpu", // Performance optimizations
     // Only show status colors if REVEALED
     !rolling && status === 'MVP' && "border-yellow-500 shadow-yellow-500/20",
     !rolling && status === 'BOTTOM' && "border-blue-900 shadow-blue-900/20 opacity-90",
+    !rolling && isPinned && "border-amber-400/90 shadow-[0_0_15px_rgba(245,158,11,0.3)] ring-1 ring-amber-400/50",
     className?.includes('hover:border-red-500') ? '' : "hover:border-red-500 hover:shadow-red-500/20 hover:scale-[1.02] hover:-translate-y-1"
   );
 };
 
-const renderStatusBadge = (status: PlayerStatus, canEdit: boolean, rolling: boolean) => {
+const renderStatusBadge = (status: PlayerStatus, canEdit: boolean, rolling: boolean, hasActions?: boolean) => {
   if (!status || canEdit || rolling) return null;
   
   return (
     <div className={cn(
-      "absolute top-2 right-2 px-2 py-0.5 rounded text-[10px] font-bold uppercase z-20",
-      status === 'MVP' ? "bg-yellow-500 text-black" : "bg-blue-900 text-blue-200"
+      "absolute px-2 py-0.5 rounded text-[10px] font-bold uppercase z-20 shadow-sm",
+      hasActions ? "top-9 right-2" : "top-2 right-2",
+      status === 'MVP' ? "bg-yellow-500 text-black font-black" : "bg-blue-900 text-blue-200"
     )}>
-      {status === 'MVP' ? 'MVP' : 'BOTTOM FRAG'}
+      {status === 'MVP' ? '★ MVP' : 'BOTTOM'}
     </div>
   );
 };
@@ -167,6 +169,9 @@ interface AgentCardProps {
   readonly rankIcon?: string;
   readonly rankName?: string;
   readonly onOpenProfileModal?: () => void;
+  readonly isPinned?: boolean;
+  readonly onTogglePin?: () => void;
+  readonly onRerollSingle?: () => void;
 }
 
 export function AgentCard({ 
@@ -186,10 +191,14 @@ export function AgentCard({
   rankIcon,
   rankName,
   onOpenProfileModal,
+  isPinned,
+  onTogglePin,
+  onRerollSingle,
 }: AgentCardProps) {
   // If no agent yet, showing a placeholder or waiting
   const displayAgent = agent || { name: '?', role: 'Duelist', image: '', color: '#333' };
   const [showInfo, setShowInfo] = useState(false);
+  const hasQuickActions = Boolean(!rolling && !canEdit && agent && (onRerollSingle || onTogglePin));
 
   return (
     <motion.div
@@ -221,7 +230,7 @@ export function AgentCard({
       aria-label={!rolling && !canEdit && strategyProfile ? `View strategic intel for ${playerName}` : undefined}
       aria-expanded={!rolling && !canEdit && strategyProfile ? showInfo : undefined}
     >
-      <Card className={getCardClasses(rolling, status, className)}>
+      <Card className={getCardClasses(rolling, status, isPinned, className)}>
         
         {/* Card Back (Face Down) */}
         {rolling && (
@@ -252,8 +261,47 @@ export function AgentCard({
            style={{ background: `linear-gradient(to bottom, ${displayAgent.color || '#333'}, transparent)` }}
         />
 
+        {/* Quick Actions (Re-roll single & Lock/Pin) */}
+        {hasQuickActions && (
+          <div className="absolute top-2 right-2 z-30 flex items-center gap-1.5">
+            {onRerollSingle && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRerollSingle();
+                }}
+                title="สุ่มใหม่เฉพาะผู้เล่นนี้ (Reroll single)"
+                className="p-1.5 rounded-md bg-zinc-950/80 hover:bg-red-600 text-zinc-300 hover:text-white border border-zinc-700/80 backdrop-blur-sm transition-all shadow-sm active:scale-90"
+                aria-label="Re-roll this agent"
+              >
+                <RotateCw className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {onTogglePin && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onTogglePin();
+                }}
+                title={isPinned ? "ปลดล็อคเอเจนต์ (Unlock)" : "ล็อคเอเจนต์นี้ไว้เมื่อสุ่มใหม่ทั้งทีม (Pin/Lock)"}
+                className={cn(
+                  "p-1.5 rounded-md border backdrop-blur-sm transition-all shadow-sm active:scale-90 flex items-center gap-1",
+                  isPinned
+                    ? "bg-amber-500 text-black border-amber-400 font-bold shadow-amber-500/30"
+                    : "bg-zinc-950/80 text-zinc-300 hover:text-amber-400 border-zinc-700/80"
+                )}
+                aria-label={isPinned ? "Unlock agent" : "Lock agent"}
+              >
+                {isPinned ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Status Indicator Badge */}
-        {renderStatusBadge(status, canEdit || false, rolling)}
+        {renderStatusBadge(status, canEdit || false, rolling, hasQuickActions)}
         {renderTierBadge(strategyProfile, rolling)}
 
         <CardHeader className="z-10 w-full text-center pb-2">

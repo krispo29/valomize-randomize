@@ -183,6 +183,12 @@ export const AGENTS: Agent[] = [
     role: "Duelist",
     image: "https://media.valorant-api.com/agents/add6443a-41bd-e414-f6ad-e58d267f4e95/displayicon.png",
     color: "#25607a"
+  },
+  {
+    name: "Miks",
+    role: "Controller",
+    image: "https://media.valorant-api.com/agents/miks/displayicon.png",
+    color: "#1e5f74"
   }
 ];
 
@@ -190,9 +196,12 @@ export const DEFAULT_FRIENDS = [
   "Mike", "Si", "Sunny", "Nut", "Do"
 ];
 
-export type ValorantMap = 'Abyss' | 'Ascent' | 'Bind' | 'Breeze' | 'Corrode' | 'Fracture' | 'Haven' | 'Icebox' | 'Lotus' | 'Pearl' | 'Split' | 'Sunset';
+export type ValorantMap = 'Abyss' | 'Ascent' | 'Bind' | 'Breeze' | 'Corrode' | 'Fracture' | 'Haven' | 'Icebox' | 'Lotus' | 'Pearl' | 'Split' | 'Summit' | 'Sunset';
 
-export const MAPS: ValorantMap[] = ['Abyss', 'Ascent', 'Bind', 'Breeze', 'Corrode', 'Fracture', 'Haven', 'Icebox', 'Lotus', 'Pearl', 'Split', 'Sunset'];
+export const MAPS: ValorantMap[] = ['Abyss', 'Ascent', 'Bind', 'Breeze', 'Corrode', 'Fracture', 'Haven', 'Icebox', 'Lotus', 'Pearl', 'Split', 'Summit', 'Sunset'];
+
+// Active competitive map pool as of October 2026 (Patch 13.06 / Champions 2026 Shanghai)
+export const ACTIVE_COMPETITIVE_MAPS: ValorantMap[] = ['Abyss', 'Ascent', 'Haven', 'Lotus', 'Split', 'Summit', 'Sunset'];
 
 // Optimized: Use external URLs instead of base64 images
 export const MAP_IMAGES: Record<ValorantMap, string> = {
@@ -207,6 +216,7 @@ export const MAP_IMAGES: Record<ValorantMap, string> = {
   'Lotus': 'https://media.valorant-api.com/maps/2fe4ed3a-450a-948b-6d6b-e89a78e680a9/splash.png',
   'Pearl': 'https://media.valorant-api.com/maps/fd267378-4d1d-484f-ff52-77821ed10dc2/splash.png',
   'Split': 'https://media.valorant-api.com/maps/d960549e-485c-e861-8d71-aa9d1aed12a2/splash.png',
+  'Summit': 'https://media.valorant-api.com/maps/summit/splash.png',
   'Sunset': 'https://media.valorant-api.com/maps/92584fbe-486a-b1b2-9faa-39b0f486b498/splash.png'
 };
 
@@ -260,6 +270,7 @@ export const MAP_ROLE_COMPOSITION: Record<ValorantMap, MapRoleComposition> = {
   'Lotus':    { duelists: 1, controllers: 1, initiators: 2, sentinels: 1 },
   'Pearl':    { duelists: 2, controllers: 1, initiators: 1, sentinels: 1 },
   'Split':    { duelists: 2, controllers: 1, initiators: 1, sentinels: 1 },
+  'Summit':   { duelists: 1, controllers: 1, initiators: 1, sentinels: 2 },
   'Sunset':   { duelists: 1, controllers: 1, initiators: 2, sentinels: 1 }
 };
 
@@ -273,75 +284,81 @@ export const MAP_META_AGENTS: Record<ValorantMap, {
 }> = {
   'Abyss': {
     duelists: ['Jett', 'Waylay', 'Neon', 'Iso'],
-    controllers: ['Harbor', 'Astra', 'Omen'],
+    controllers: ['Omen', 'Astra', 'Harbor', 'Clove'],
     initiators: ['Sova', 'Fade', 'KAY/O'],
     sentinels: ['Cypher', 'Deadlock', 'Chamber', 'Veto']
   },
   'Ascent': { 
-    duelists: ['Jett', 'Reyna', 'Phoenix', 'Raze'],
-    controllers: ['Omen', 'Clove', 'Astra', 'Brimstone'],
-    initiators: ['Sova', 'KAY/O', 'Gekko', 'Fade'],
-    sentinels: ['Killjoy', 'Cypher', 'Veto', 'Vyse']
+    duelists: ['Jett', 'Phoenix', 'Reyna', 'Waylay'],
+    controllers: ['Clove', 'Omen', 'Astra', 'Miks'],
+    initiators: ['Sova', 'KAY/O', 'Fade', 'Tejo'],
+    sentinels: ['Cypher', 'Killjoy', 'Veto', 'Vyse']
   },
   'Bind': {
-    duelists: ['Raze', 'Neon', 'Phoenix'],
-    controllers: ['Brimstone', 'Viper', 'Omen'],
-    initiators: ['Skye', 'Gekko', 'Tejo'],
+    duelists: ['Raze', 'Neon', 'Phoenix', 'Waylay'],
+    controllers: ['Brimstone', 'Viper', 'Omen', 'Clove'],
+    initiators: ['Skye', 'Gekko', 'Tejo', 'Fade'],
     sentinels: ['Cypher', 'Veto', 'Sage', 'Chamber']
   },
   'Breeze': {
     duelists: ['Jett', 'Yoru', 'Reyna', 'Waylay'],
-    controllers: ['Viper', 'Harbor', 'Astra'],
+    controllers: ['Viper', 'Harbor', 'Astra', 'Clove'],
     initiators: ['Sova', 'KAY/O', 'Skye'],
     sentinels: ['Cypher', 'Chamber', 'Veto']
   },
   'Corrode': { 
     duelists: ['Waylay', 'Neon', 'Yoru', 'Iso'],
-    controllers: ['Omen', 'Viper', 'Clove'],
+    controllers: ['Omen', 'Viper', 'Clove', 'Miks'],
     initiators: ['Fade', 'Tejo', 'Breach'],
-    sentinels: ['Cypher', 'Deadlock', 'Vyse']
+    sentinels: ['Cypher', 'Deadlock', 'Vyse', 'Veto']
   },
   'Fracture': {
     duelists: ['Neon', 'Raze', 'Jett', 'Yoru'],
-    controllers: ['Brimstone', 'Harbor', 'Viper'],
-    initiators: ['Breach', 'Fade', 'Gekko'],
+    controllers: ['Brimstone', 'Harbor', 'Viper', 'Omen'],
+    initiators: ['Breach', 'Fade', 'Tejo', 'Gekko'],
     sentinels: ['Killjoy', 'Cypher', 'Chamber', 'Deadlock']
   },
   'Haven': {
-    duelists: ['Jett', 'Neon', 'Phoenix', 'Reyna'],
-    controllers: ['Omen', 'Clove', 'Astra'],
-    initiators: ['Breach', 'Sova', 'Fade'],
+    duelists: ['Jett', 'Neon', 'Phoenix', 'Waylay'],
+    controllers: ['Omen', 'Clove', 'Miks', 'Astra'],
+    initiators: ['Breach', 'Sova', 'Fade', 'Tejo'],
     sentinels: ['Killjoy', 'Cypher', 'Veto', 'Chamber']
   },
   'Icebox': { 
     duelists: ['Jett', 'Reyna', 'Yoru', 'Iso'],
-    controllers: ['Viper', 'Harbor', 'Clove'],
-    initiators: ['Sova', 'Gekko', 'KAY/O'],
+    controllers: ['Viper', 'Harbor', 'Clove', 'Omen'],
+    initiators: ['Sova', 'Gekko', 'KAY/O', 'Fade'],
     sentinels: ['Killjoy', 'Sage', 'Deadlock', 'Chamber']
   },
   'Lotus': { 
     duelists: ['Raze', 'Neon', 'Jett', 'Phoenix'],
-    controllers: ['Omen', 'Viper', 'Clove', 'Harbor'],
-    initiators: ['Fade', 'Breach', 'Gekko', 'Skye'],
-    sentinels: ['Killjoy', 'Cypher', 'Deadlock', 'Vyse']
+    controllers: ['Clove', 'Omen', 'Viper', 'Miks'],
+    initiators: ['Fade', 'Breach', 'Gekko', 'Tejo'],
+    sentinels: ['Vyse', 'Killjoy', 'Cypher', 'Deadlock']
   },
   'Pearl': {
-    duelists: ['Jett', 'Neon', 'Phoenix', 'Waylay'],
-    controllers: ['Astra', 'Harbor', 'Viper'],
-    initiators: ['Fade', 'Gekko', 'KAY/O'],
+    duelists: ['Jett', 'Neon', 'Waylay', 'Phoenix'],
+    controllers: ['Astra', 'Harbor', 'Viper', 'Miks'],
+    initiators: ['Fade', 'Gekko', 'KAY/O', 'Tejo'],
     sentinels: ['Killjoy', 'Cypher', 'Veto', 'Chamber']
   },
   'Split': {
-    duelists: ['Raze', 'Jett', 'Waylay'],
-    controllers: ['Omen', 'Viper', 'Astra'],
-    initiators: ['Skye', 'Breach', 'Tejo'],
-    sentinels: ['Cypher', 'Sage', 'Veto']
+    duelists: ['Raze', 'Jett', 'Waylay', 'Neon'],
+    controllers: ['Omen', 'Viper', 'Astra', 'Miks'],
+    initiators: ['Skye', 'Breach', 'Tejo', 'KAY/O'],
+    sentinels: ['Cypher', 'Sage', 'Veto', 'Deadlock']
+  },
+  'Summit': {
+    duelists: ['Raze', 'Neon', 'Phoenix', 'Waylay'],
+    controllers: ['Omen', 'Miks', 'Viper', 'Clove'],
+    initiators: ['Sova', 'Fade', 'Breach', 'KAY/O'],
+    sentinels: ['Sage', 'Cypher', 'Vyse', 'Veto']
   },
   'Sunset': { 
-    duelists: ['Raze', 'Neon', 'Phoenix'],
-    controllers: ['Omen', 'Clove', 'Harbor', 'Astra'],
-    initiators: ['Gekko', 'Breach', 'Fade', 'Sova'],
-    sentinels: ['Cypher', 'Deadlock', 'Vyse', 'Sage']
+    duelists: ['Neon', 'Raze', 'Phoenix', 'Waylay'],
+    controllers: ['Omen', 'Clove', 'Miks', 'Harbor'],
+    initiators: ['Sova', 'Fade', 'Breach', 'Gekko'],
+    sentinels: ['Cypher', 'Chamber', 'Vyse', 'Deadlock']
   }
 };
 export const MAP_META: Record<string, string[]> = Object.fromEntries(
