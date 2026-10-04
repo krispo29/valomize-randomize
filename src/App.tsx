@@ -7,7 +7,7 @@ import { DEFAULT_FRIENDS, type Agent, type Role, type ValorantMap, MAP_META, MAP
 import { valorantMeta2026, type AgentStrategyProfile } from '@/data/meta';
 import { 
   Shuffle, UserCog, Settings2, Map as MapIcon, Volume2, VolumeX, 
-  BarChart3, Trophy, Globe, Zap, Ban, Keyboard, Tv, Copy 
+  BarChart3, Trophy, Globe, Zap, Ban, Keyboard, Tv, Copy, Swords, Dices 
 } from 'lucide-react';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
@@ -28,6 +28,9 @@ import { ShareMatchCardModal } from '@/components/ShareMatchCardModal';
 import { AgentBlacklistModal } from '@/components/AgentBlacklistModal';
 import { PartyPresetsBar, PARTY_PRESETS } from '@/components/PartyPresetsBar';
 import { KeyboardShortcutsModal } from '@/components/KeyboardShortcutsModal';
+import { MapVetoModal } from '@/components/MapVetoModal';
+import { GunChallengeModal } from '@/components/GunChallengeModal';
+import { generateTacticalBrief } from '@/utils/tacticalBrief';
 import jettLogo from '@/assets/jett_logo.png';
 
 const MapSelector = lazy(() => import('@/components/MapSelector').then(module => ({ default: module.MapSelector })));
@@ -49,8 +52,10 @@ function App() {
   const { agents: liveAgents } = useValorantData();
 
   // Player Profiles & Ranks State (Phase 3)
-  const { profiles, setPlayerRank, syncPlayerRiot } = usePlayerProfiles(friends);
+  const { profiles, setPlayerRank, syncPlayerRiot, setComfortAgents } = usePlayerProfiles(friends);
   const [showProfilesModal, setShowProfilesModal] = useState(false);
+  const [showMapVetoModal, setShowMapVetoModal] = useState(false);
+  const [showGunChallengeModal, setShowGunChallengeModal] = useState(false);
 
   // Stats Dashboard & Match Logging State
   const { matches, addMatch } = useMatchStats();
@@ -137,6 +142,7 @@ function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const blacklistedSet = useMemo(() => new Set(blacklistedAgents), [blacklistedAgents]);
+  const tacticalBrief = useMemo(() => generateTacticalBrief(assignmentsByIndex, selectedMap), [assignmentsByIndex, selectedMap]);
 
   // Sound manager
   const { 
@@ -219,6 +225,15 @@ function App() {
       if (roleCandidates.length > 0) candidates = roleCandidates;
     }
 
+    // Check player comfort pool
+    const playerComfort = profiles[playerIndex]?.comfortAgents;
+    if (playerComfort && playerComfort.length > 0) {
+      const comfortCandidates = candidates.filter(a => playerComfort.includes(a.name));
+      if (comfortCandidates.length > 0) {
+        candidates = comfortCandidates;
+      }
+    }
+
     if (candidates.length === 0) {
       candidates = pool.filter(a => !usedAgentNames.has(a.name));
     }
@@ -255,6 +270,48 @@ function App() {
     }
   };
 
+  // Swap assigned agents between two players
+  const handleSwapAgents = (idxA: number, idxB: number) => {
+    if (idxA === idxB || phase !== 'IDLE') return;
+    const agentA = assignmentsByIndex[idxA];
+    const agentB = assignmentsByIndex[idxB];
+    if (!agentA && !agentB) return;
+
+    playReveal();
+    const updated = {
+      ...assignmentsByIndex,
+      [idxA]: agentB || null,
+      [idxB]: agentA || null,
+    };
+    setAssignmentsByIndex(updated);
+
+    const nameA = friends[idxA] || `Player ${idxA + 1}`;
+    const nameB = friends[idxB] || `Player ${idxB + 1}`;
+    setToastMessage(`🔄 สลับตัวละครระหว่าง ${nameA} (${agentA?.name || '?'}) กับ ${nameB} (${agentB?.name || '?'}) แล้ว!`);
+    setTimeout(() => setToastMessage(null), 2500);
+
+    if (isInRoom && isHost && roomCode) {
+      broadcastState({
+        roomCode,
+        hostName: friends[0] || 'Host',
+        createdAt: Date.now(),
+        friends,
+        profiles,
+        selectedMap,
+        playerStatuses,
+        mvpRoleChoices,
+        rolesCount,
+        assignmentsByIndex: updated,
+        phase: 'IDLE',
+        revealedIndices: Array.from(revealedIndices),
+        deckIndices: [],
+        gridIndices,
+        showVictory,
+        lastUpdated: Date.now(),
+      });
+    }
+  };
+
   const calculateAssignments = () => {
       const final: Record<number, Agent> = {};
       const assignedIndices = new Set<number>();
@@ -280,18 +337,24 @@ function App() {
 
       if (isPureRandom) {
         const unassigned = friends.map((_, i) => i).filter(i => !assignedIndices.has(i));
-        const candidates = availablePool.filter(a => !usedAgentNames.has(a.name)).sort(() => 0.5 - Math.random());
-        unassigned.forEach((pIdx, i) => {
-          if (candidates[i]) {
-            final[pIdx] = candidates[i];
-            usedAgentNames.add(candidates[i].name);
-          } else {
+        unassigned.forEach((pIdx) => {
+          const comfortList = profiles[pIdx]?.comfortAgents;
+          let pick: Agent | undefined;
+          if (comfortList && comfortList.length > 0) {
+            const comfortCandidates = availablePool.filter(a => comfortList.includes(a.name) && !usedAgentNames.has(a.name));
+            if (comfortCandidates.length > 0) {
+              pick = comfortCandidates[Math.floor(Math.random() * comfortCandidates.length)];
+            }
+          }
+          if (!pick) {
             const fallback = availablePool.filter(a => !usedAgentNames.has(a.name));
             if (fallback.length > 0) {
-              const pick = fallback[Math.floor(Math.random() * fallback.length)];
-              final[pIdx] = pick;
-              usedAgentNames.add(pick.name);
+              pick = fallback[Math.floor(Math.random() * fallback.length)];
             }
+          }
+          if (pick) {
+            final[pIdx] = pick;
+            usedAgentNames.add(pick.name);
           }
         });
         return final;
@@ -328,8 +391,14 @@ function App() {
         }
       });
 
-      const pickAgent = (role: Role, excludeNames: Set<string>, pool: Agent[]): Agent | null => {
-          const candidates = pool.filter(a => a.role === role && !excludeNames.has(a.name));
+      const pickAgent = (role: Role, excludeNames: Set<string>, pool: Agent[], comfortList?: string[]): Agent | null => {
+          let candidates = pool.filter(a => a.role === role && !excludeNames.has(a.name));
+          if (comfortList && comfortList.length > 0) {
+            const comfortMatches = candidates.filter(a => comfortList.includes(a.name));
+            if (comfortMatches.length > 0) {
+              candidates = comfortMatches;
+            }
+          }
           return candidates.length > 0 
               ? candidates[Math.floor(Math.random() * candidates.length)]
               : null;
@@ -349,8 +418,9 @@ function App() {
           }
 
           if (roleToForce) {
-              let agent = pickAgent(roleToForce, usedAgentNames, currentPool);
-              agent ??= pickAgent(roleToForce, usedAgentNames, availablePool);
+              const comfortList = profiles[index]?.comfortAgents;
+              let agent = pickAgent(roleToForce, usedAgentNames, currentPool, comfortList);
+              agent ??= pickAgent(roleToForce, usedAgentNames, availablePool, comfortList);
               
               if (agent) {
                   final[index] = agent;
@@ -359,6 +429,50 @@ function App() {
                   if (remainingRoleCounts[roleToForce] > 0) remainingRoleCounts[roleToForce]--;
               }
           }
+      });
+
+      // 1.5 Handle Comfort Picks for unassigned players who have them configured
+      const unassignedWithComfort = friends
+        .map((_, index) => index)
+        .filter(index => !assignedIndices.has(index) && profiles[index]?.comfortAgents && profiles[index].comfortAgents!.length > 0)
+        .sort((a, b) => (profiles[a].comfortAgents?.length || 0) - (profiles[b].comfortAgents?.length || 0));
+
+      unassignedWithComfort.forEach((playerIndex) => {
+        if (assignedIndices.has(playerIndex)) return;
+        const comfortList = profiles[playerIndex].comfortAgents!;
+
+        // Check if any comfort agent fits a required role that still needs filling
+        const neededRoles = (Object.keys(remainingRoleCounts) as Role[]).filter(r => remainingRoleCounts[r] > 0);
+        let matchedAgent: Agent | null = null;
+        let matchedRole: Role | null = null;
+
+        for (const role of neededRoles) {
+          const candidate = pickAgent(role, usedAgentNames, currentPool, comfortList) 
+            || pickAgent(role, usedAgentNames, availablePool, comfortList);
+          if (candidate) {
+            matchedAgent = candidate;
+            matchedRole = role;
+            break;
+          }
+        }
+
+        // If no needed role matched or no roles strictly required, pick any comfort agent available
+        if (!matchedAgent && neededRoles.length === 0) {
+          const availableComfort = (currentPool.length >= 5 ? currentPool : availablePool)
+            .filter(a => comfortList.includes(a.name) && !usedAgentNames.has(a.name));
+          if (availableComfort.length > 0) {
+            matchedAgent = availableComfort[Math.floor(Math.random() * availableComfort.length)];
+          }
+        }
+
+        if (matchedAgent) {
+          final[playerIndex] = matchedAgent;
+          assignedIndices.add(playerIndex);
+          usedAgentNames.add(matchedAgent.name);
+          if (matchedRole && remainingRoleCounts[matchedRole] > 0) {
+            remainingRoleCounts[matchedRole]--;
+          }
+        }
       });
 
       // 2. Fill specific selected roles
@@ -650,13 +764,16 @@ function App() {
         setShowMultiplayerModal(false);
         setShowBlacklistModal(false);
         setShowShortcutsModal(false);
+        setShowMapVetoModal(false);
+        setShowGunChallengeModal(false);
         setShowMapSelector(false);
         setShowSettings(false);
         return;
       }
 
       const isAnyModalOpen = showStatsDashboard || showRecordMatch || showShareCardModal || 
-        showProfilesModal || showMultiplayerModal || showBlacklistModal || showShortcutsModal;
+        showProfilesModal || showMultiplayerModal || showBlacklistModal || showShortcutsModal ||
+        showMapVetoModal || showGunChallengeModal;
 
       if (isAnyModalOpen) return;
 
@@ -675,6 +792,10 @@ function App() {
       } else if (e.key === 't' || e.key === 'T') {
         e.preventDefault();
         setIsTurbo(prev => !prev);
+        playClick();
+      } else if (e.key === 'v' || e.key === 'V') {
+        e.preventDefault();
+        setShowMapVetoModal(prev => !prev);
         playClick();
       } else if (e.key === 'm' || e.key === 'M') {
         e.preventDefault();
@@ -705,6 +826,7 @@ function App() {
   }, [
     phase, showVictory, showStatsDashboard, showRecordMatch, showShareCardModal, 
     showProfilesModal, showMultiplayerModal, showBlacklistModal, showShortcutsModal,
+    showMapVetoModal, showGunChallengeModal,
     assignmentsByIndex, friends, selectedMap, isTurbo
   ]);
 
@@ -769,6 +891,34 @@ function App() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Map Veto Modal button */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowMapVetoModal(true);
+                playClick();
+              }}
+              className="px-2.5 py-1.5 rounded-lg border bg-zinc-900/60 border-zinc-800 text-zinc-300 hover:text-white hover:border-red-500/50 font-bold flex items-center gap-1.5 transition active:scale-95"
+              title="ระบบโหวตแบนด่านแบบ VCT แข่งขัน (Map Veto Draft) [Hotkey: V]"
+            >
+              <Swords className="w-3.5 h-3.5 text-red-400" />
+              <span className="hidden sm:inline">Map Veto (V)</span>
+            </button>
+
+            {/* Gun Challenge Modal button */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowGunChallengeModal(true);
+                playClick();
+              }}
+              className="px-2.5 py-1.5 rounded-lg border bg-zinc-900/60 border-zinc-800 text-zinc-300 hover:text-white hover:border-amber-500/50 font-bold flex items-center gap-1.5 transition active:scale-95"
+              title="สุ่มชาเลนจ์ปืน & กติกาซ้อมแข่ง Eco / Weapon Roulette"
+            >
+              <Dices className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">Challenge</span>
+            </button>
+
             {/* Copy in-game chat string shortcut button */}
             {Object.keys(assignmentsByIndex).length > 0 && (
               <button
@@ -1060,6 +1210,45 @@ function App() {
             </div>
         )}
 
+        {/* Radiant IGL Tactical Banner */}
+        {phase === 'IDLE' && Object.keys(assignmentsByIndex).length > 0 && friends.every((_, i) => Boolean(assignmentsByIndex[i])) && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 mx-auto w-full max-w-4xl p-3 px-4 rounded-xl bg-zinc-950/70 border border-red-500/25 backdrop-blur-md shadow-lg"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800/80 pb-2 mb-2">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-red-600/30 text-red-400 border border-red-500/40 flex items-center gap-1">
+                  <Zap className="w-3 h-3 text-red-400" />
+                  Radiant IGL Brief
+                </span>
+                <span className="text-sm font-bold text-white tracking-wide">
+                  {tacticalBrief.headline}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="px-2 py-0.5 rounded-full font-bold bg-purple-950/60 text-purple-300 border border-purple-500/30 text-[11px]">
+                  Tempo: {tacticalBrief.tempo}
+                </span>
+                <span className="px-2 py-0.5 rounded font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[11px]">
+                  Tier: {tacticalBrief.ratingGrade}
+                </span>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+              <div className="flex items-start gap-1.5">
+                <span className="text-amber-400 font-bold shrink-0">🎯 Win Con:</span>
+                <span className="text-zinc-300 text-[11px] leading-relaxed">{tacticalBrief.winCondition}</span>
+              </div>
+              <div className="flex items-start gap-1.5">
+                <span className="text-cyan-400 font-bold shrink-0">🛡️ Defense:</span>
+                <span className="text-zinc-400 text-[11px] leading-relaxed">{tacticalBrief.defenseStrategy}</span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         {/* --- MAIN GAME AREA --- */}
         <div className="relative flex-grow min-h-[400px] perspective-1000">
             
@@ -1164,6 +1353,10 @@ function App() {
                                         isPinned={pinnedIndices.has(index)}
                                         onTogglePin={() => handleTogglePin(index)}
                                         onRerollSingle={() => handleRerollSingle(index)}
+                                        onSwapWithPlayer={(targetIdx) => handleSwapAgents(index, targetIdx)}
+                                        teammates={friends
+                                            .map((name, i) => ({ index: i, name, agentName: assignmentsByIndex[i]?.name }))
+                                            .filter(t => t.index !== index)}
                                     />
                                 </motion.div>
                             )}
@@ -1224,6 +1417,7 @@ function App() {
           profiles={profiles}
           onSetRank={setPlayerRank}
           onSyncRiot={syncPlayerRiot}
+          onSetComfortAgents={setComfortAgents}
           onUpdateName={(idx, newName) => {
             const newF = [...friends];
             newF[idx] = newName;
@@ -1270,6 +1464,25 @@ function App() {
             playClick();
             setBlacklistedAgents(names);
           }}
+        />
+
+        <MapVetoModal
+          isOpen={showMapVetoModal}
+          onClose={() => setShowMapVetoModal(false)}
+          onSelectMap={(map) => {
+            setSelectedMap(map);
+            setShowMapVetoModal(false);
+            playLock();
+            setToastMessage(`🏆 เลือกด่านจากการ Veto: ${map}`);
+            setTimeout(() => setToastMessage(null), 3000);
+          }}
+          onPlaySound={playClick}
+        />
+
+        <GunChallengeModal
+          isOpen={showGunChallengeModal}
+          onClose={() => setShowGunChallengeModal(false)}
+          onPlaySound={playClick}
         />
 
         <KeyboardShortcutsModal

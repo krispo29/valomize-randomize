@@ -141,10 +141,19 @@ export function usePlayerProfiles(friends: string[]) {
     [updateProfile]
   );
 
+  const setComfortAgents = useCallback(
+    (index: number, agents: string[]) => {
+      updateProfile(index, { comfortAgents: agents });
+    },
+    [updateProfile]
+  );
+
   return {
     profiles,
     updateProfile,
     setPlayerRank,
     syncPlayerRiot,
+    setComfortAgents,
   };
 }
+

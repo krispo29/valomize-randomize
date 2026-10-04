@@ -19,6 +19,7 @@ const SHORTCUTS: ShortcutItem[] = [
   { keys: ['T'], action: 'Toggle Turbo Mode', description: 'เปิด/ปิดโหมดเทอร์โบ (สุ่มเสร็จใน 0.1 วินาที ไม่ต้องรออนิเมชั่น)' },
   { keys: ['C'], action: 'Copy In-Game Chat', description: 'คัดลอกรายชื่อส่งแชท Valorant ทันที ([VALOMIZE] Map > P1 (Agent)...)' },
   { keys: ['M'], action: 'Map Selector', description: 'เปิด/ปิดหน้าต่างเลือกแผนที่ (Map Selector)' },
+  { keys: ['V'], action: 'Map Veto (VCT Draft)', description: 'เปิดระบบจำลองการแบน-เลือกด่านทัวร์นาเมนต์ VCT' },
   { keys: ['S'], action: 'Stats Dashboard', description: 'เปิด/ปิดหน้าสถิติทีม และประวัติการเล่น' },
   { keys: ['B'], action: 'Agent Blacklist', description: 'เปิดหน้าตัดตัวละครที่ยังไม่ปลดล็อค / แบนตัวละคร' },
   { keys: ['Esc'], action: 'Close Modal', description: 'ปิดหน้าต่างป๊อปอัพหรือหน้าต่างผลลัพธ์ที่เปิดอยู่' },

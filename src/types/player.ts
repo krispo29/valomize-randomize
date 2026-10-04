@@ -18,4 +18,5 @@ export interface PlayerProfile {
   rankColor?: string;
   cardImage?: string;
   accountLevel?: number;
+  comfortAgents?: string[];
 }

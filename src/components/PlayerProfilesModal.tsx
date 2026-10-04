@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, X, Sparkles, Check, Search, User, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Trophy, X, Sparkles, Check, Search, User, AlertCircle, ChevronLeft, ChevronRight, Target, RotateCcw } from 'lucide-react';
 import { Button } from './ui/button';
 import { type PlayerProfile } from '@/types/player';
 import { VALORANT_RANKS } from '@/services/rankService';
+import { AGENTS, type Role } from '@/data/valorant';
 
 interface PlayerProfilesModalProps {
   show: boolean;
@@ -13,6 +14,7 @@ interface PlayerProfilesModalProps {
   onSetRank: (index: number, tierIndex: number) => void;
   onSyncRiot: (index: number, riotId: string, region: 'ap' | 'na' | 'eu') => Promise<{ success: boolean; error?: string }>;
   onUpdateName: (index: number, newName: string) => void;
+  onSetComfortAgents?: (index: number, agents: string[]) => void;
 }
 
 const RANK_DIVISIONS = [
@@ -36,10 +38,14 @@ export function PlayerProfilesModal({
   onSetRank,
   onSyncRiot,
   onUpdateName,
+  onSetComfortAgents,
 }: PlayerProfilesModalProps) {
   const [selectedPlayerIndex, setSelectedPlayerIndex] = useState<number>(0);
+  const [activeTab, setActiveTab] = useState<'RANK' | 'COMFORT'>('RANK');
   const [riotIdInputs, setRiotIdInputs] = useState<Record<number, string>>({});
   const [selectedDivision, setSelectedDivision] = useState<string>('ALL');
+  const [comfortRoleFilter, setComfortRoleFilter] = useState<Role | 'ALL'>('ALL');
+  const [comfortSearch, setComfortSearch] = useState('');
   const [syncStatus, setSyncStatus] = useState<{ loading: boolean; message?: string; isError?: boolean }>({
     loading: false,
   });
@@ -233,126 +239,289 @@ export function PlayerProfilesModal({
                         ID: {activeProfile.riotId}
                       </p>
                     )}
+
+                    {/* Comfort Picks preview badge */}
+                    <div className="mt-3 w-full bg-zinc-950/90 p-2 rounded-lg border border-zinc-800 text-left">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] text-zinc-400 font-bold uppercase flex items-center gap-1">
+                          <Target className="h-3 w-3 text-red-400" /> Comfort Pool
+                        </span>
+                        <span className="text-[10px] text-zinc-500 font-semibold">
+                          {activeProfile.comfortAgents?.length ? `${activeProfile.comfortAgents.length} ตัว` : 'ทุกตัว'}
+                        </span>
+                      </div>
+                      {activeProfile.comfortAgents && activeProfile.comfortAgents.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto">
+                          {activeProfile.comfortAgents.map((agName) => (
+                            <span
+                              key={agName}
+                              className="px-1.5 py-0.5 rounded bg-red-600/20 text-red-300 text-[10px] font-bold border border-red-500/30"
+                            >
+                              {agName}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-zinc-500 italic">
+                          สุ่มได้ทุกตัวละครในเกม
+                        </p>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="w-full pt-4 border-t border-zinc-800 text-[10px] text-zinc-500">
-                    ตราแรงค์นี้จะแสดงบนการ์ดผู้เล่นในหน้าสุ่มและผลสรุป
+                  <div className="w-full pt-3 border-t border-zinc-800 text-[10px] text-zinc-500">
+                    ตั้งค่าเฉพาะผู้เล่นคนนี้ ระบบจะสุ่มเฉพาะตัวที่เลือก
                   </div>
                 </div>
 
-                {/* Right Form: Riot ID Sync & Rank Picker */}
-                <div className="md:col-span-2 space-y-5">
-                  {/* Edit Name & Riot ID */}
-                  <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 space-y-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-bold uppercase text-zinc-400 mb-1">
-                          ชื่อในเว็บ (Display Name)
-                        </label>
-                        <input
-                          type="text"
-                          value={players[selectedPlayerIndex] || ''}
-                          onChange={(e) => onUpdateName(selectedPlayerIndex, e.target.value)}
-                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500 font-bold"
-                        />
-                      </div>
+                {/* Right Form: Tabs for Riot ID / Rank & Comfort Picks */}
+                <div className="md:col-span-2 space-y-4">
+                  {/* Tab Selector */}
+                  <div className="flex border-b border-zinc-800 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('RANK')}
+                      className={`pb-2 px-3 text-xs font-black uppercase transition border-b-2 flex items-center gap-1.5 ${
+                        activeTab === 'RANK'
+                          ? 'border-red-500 text-white'
+                          : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      <Trophy className="h-3.5 w-3.5 text-yellow-400" />
+                      <span>แรงค์ & Riot ID</span>
+                    </button>
 
-                      <div>
-                        <label className="block text-[11px] font-bold uppercase text-zinc-400 mb-1">
-                          Riot ID (Name#TAG)
-                        </label>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            placeholder="เช่น Mike#TH1"
-                            value={
-                              riotIdInputs[selectedPlayerIndex] !== undefined
-                                ? riotIdInputs[selectedPlayerIndex]
-                                : activeProfile.riotId || ''
-                            }
-                            onChange={(e) =>
-                              setRiotIdInputs({ ...riotIdInputs, [selectedPlayerIndex]: e.target.value })
-                            }
-                            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-red-500 font-mono"
-                          />
-                          <Button
-                            onClick={handleSyncClick}
-                            disabled={syncStatus.loading}
-                            className="bg-red-600 hover:bg-red-500 text-white font-bold text-xs px-4 flex items-center gap-1.5 whitespace-nowrap"
-                          >
-                            <Search className="h-3.5 w-3.5" />
-                            {syncStatus.loading ? 'Syncing...' : 'Sync'}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Sync Feedback Message */}
-                    {syncStatus.message && (
-                      <div
-                        className={`p-2.5 rounded-lg text-xs font-bold flex items-center gap-2 ${
-                          syncStatus.isError
-                            ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
-                            : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-                        }`}
-                      >
-                        {syncStatus.isError ? <AlertCircle className="h-4 w-4 shrink-0" /> : <Check className="h-4 w-4 shrink-0" />}
-                        <span>{syncStatus.message}</span>
-                      </div>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('COMFORT')}
+                      className={`pb-2 px-3 text-xs font-black uppercase transition border-b-2 flex items-center gap-1.5 ${
+                        activeTab === 'COMFORT'
+                          ? 'border-red-500 text-white'
+                          : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      <Target className="h-3.5 w-3.5 text-red-400" />
+                      <span>
+                        ตัวละครที่ถนัด (Comfort Mains)
+                        {activeProfile.comfortAgents?.length ? ` (${activeProfile.comfortAgents.length})` : ''}
+                      </span>
+                    </button>
                   </div>
 
-                  {/* Manual Rank Tier Selector with Division Filters (QoL Feature) */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
-                        <Trophy className="h-3.5 w-3.5 text-yellow-400" /> หรือเลือกตราแรงค์ด้วยตัวเอง (1-Click Rank Picker)
-                      </label>
-                      <span className="text-[10px] text-zinc-500">คลิกที่ตราแรงค์เพื่อเลือก</span>
-                    </div>
+                  {activeTab === 'RANK' ? (
+                    <>
+                      {/* Edit Name & Riot ID */}
+                      <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[11px] font-bold uppercase text-zinc-400 mb-1">
+                              ชื่อในเว็บ (Display Name)
+                            </label>
+                            <input
+                              type="text"
+                              value={players[selectedPlayerIndex] || ''}
+                              onChange={(e) => onUpdateName(selectedPlayerIndex, e.target.value)}
+                              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500 font-bold"
+                            />
+                          </div>
 
-                    {/* Division Quick Filter Pills (QoL) */}
-                    <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none">
-                      {RANK_DIVISIONS.map((div) => (
-                        <button
-                          key={div}
-                          type="button"
-                          onClick={() => setSelectedDivision(div)}
-                          className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase transition whitespace-nowrap ${
-                            selectedDivision === div
-                              ? 'bg-red-600 text-white shadow-sm'
-                              : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'
-                          }`}
-                        >
-                          {div}
-                        </button>
-                      ))}
-                    </div>
+                          <div>
+                            <label className="block text-[11px] font-bold uppercase text-zinc-400 mb-1">
+                              Riot ID (Name#TAG)
+                            </label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="เช่น Mike#TH1"
+                                value={
+                                  riotIdInputs[selectedPlayerIndex] !== undefined
+                                    ? riotIdInputs[selectedPlayerIndex]
+                                    : activeProfile.riotId || ''
+                                }
+                                onChange={(e) =>
+                                  setRiotIdInputs({ ...riotIdInputs, [selectedPlayerIndex]: e.target.value })
+                                }
+                                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-red-500 font-mono"
+                              />
+                              <Button
+                                onClick={handleSyncClick}
+                                disabled={syncStatus.loading}
+                                className="bg-red-600 hover:bg-red-500 text-white font-bold text-xs px-4 flex items-center gap-1.5 whitespace-nowrap"
+                              >
+                                <Search className="h-3.5 w-3.5" />
+                                {syncStatus.loading ? 'Syncing...' : 'Sync'}
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
 
-                    <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 max-h-48 overflow-y-auto p-2 bg-zinc-950/70 border border-zinc-800/80 rounded-xl">
-                      {filteredRanks.map((tier) => {
-                        const isSelected = activeProfile.rankTier === tier.tier;
-
-                        return (
-                          <button
-                            key={tier.tier}
-                            type="button"
-                            onClick={() => onSetRank(selectedPlayerIndex, tier.tier)}
-                            className={`flex flex-col items-center p-2 rounded-lg border transition-all ${
-                              isSelected
-                                ? 'bg-zinc-800 border-yellow-400 shadow-md shadow-yellow-400/20 scale-105'
-                                : 'bg-zinc-900/50 border-zinc-800/60 hover:border-zinc-600 hover:bg-zinc-800/40 opacity-70 hover:opacity-100'
+                        {/* Sync Feedback Message */}
+                        {syncStatus.message && (
+                          <div
+                            className={`p-2.5 rounded-lg text-xs font-bold flex items-center gap-2 ${
+                              syncStatus.isError
+                                ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
+                                : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
                             }`}
                           >
-                            <img src={tier.icon} alt={tier.tierName} className="w-7 h-7 object-contain mb-1" />
-                            <span className="text-[10px] font-bold text-white truncate max-w-full text-center">
-                              {tier.tierName}
-                            </span>
+                            {syncStatus.isError ? <AlertCircle className="h-4 w-4 shrink-0" /> : <Check className="h-4 w-4 shrink-0" />}
+                            <span>{syncStatus.message}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Manual Rank Tier Selector */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
+                            <Trophy className="h-3.5 w-3.5 text-yellow-400" /> หรือเลือกตราแรงค์ด้วยตัวเอง (1-Click Rank Picker)
+                          </label>
+                          <span className="text-[10px] text-zinc-500">คลิกตราแรงค์เพื่อเลือก</span>
+                        </div>
+
+                        {/* Division Quick Filter Pills */}
+                        <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none">
+                          {RANK_DIVISIONS.map((div) => (
+                            <button
+                              key={div}
+                              type="button"
+                              onClick={() => setSelectedDivision(div)}
+                              className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase transition whitespace-nowrap ${
+                                selectedDivision === div
+                                  ? 'bg-red-600 text-white shadow-sm'
+                                  : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'
+                              }`}
+                            >
+                              {div}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 max-h-48 overflow-y-auto p-2 bg-zinc-950/70 border border-zinc-800/80 rounded-xl">
+                          {filteredRanks.map((tier) => {
+                            const isSelected = activeProfile.rankTier === tier.tier;
+
+                            return (
+                              <button
+                                key={tier.tier}
+                                type="button"
+                                onClick={() => onSetRank(selectedPlayerIndex, tier.tier)}
+                                className={`flex flex-col items-center p-2 rounded-lg border transition-all ${
+                                  isSelected
+                                    ? 'bg-zinc-800 border-yellow-400 shadow-md shadow-yellow-400/20 scale-105'
+                                    : 'bg-zinc-900/50 border-zinc-800/60 hover:border-zinc-600 hover:bg-zinc-800/40 opacity-70 hover:opacity-100'
+                                }`}
+                              >
+                                <img src={tier.icon} alt={tier.tierName} className="w-7 h-7 object-contain mb-1" />
+                                <span className="text-[10px] font-bold text-white truncate max-w-full text-center">
+                                  {tier.tierName}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    /* COMFORT PICKS TAB */
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h4 className="text-xs font-bold uppercase text-white flex items-center gap-1.5">
+                            <Target className="h-4 w-4 text-red-500" /> กำหนด Agent Pool สำหรับ {players[selectedPlayerIndex]}
+                          </h4>
+                          <p className="text-[11px] text-zinc-400">
+                            คลิกเลือกตัวละครที่ผู้เล่นคนนี้เล่นเป็น เมื่อสุ่มระบบจะเลือกจากลิสต์นี้เท่านั้น
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => onSetComfortAgents?.(selectedPlayerIndex, [])}
+                            className="px-2 py-1 rounded text-[11px] font-bold bg-zinc-900 border border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-800 transition flex items-center gap-1"
+                          >
+                            <RotateCcw className="h-3 w-3" />
+                            รีเซ็ต (เล่นได้ทุกตัว)
                           </button>
-                        );
-                      })}
+                        </div>
+                      </div>
+
+                      {/* Search and Role Filter */}
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
+                          <input
+                            type="text"
+                            placeholder="ค้นหาเอเจนต์..."
+                            value={comfortSearch}
+                            onChange={(e) => setComfortSearch(e.target.value)}
+                            className="w-full pl-8 pr-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-red-500"
+                          />
+                        </div>
+
+                        <div className="flex gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800">
+                          {(['ALL', 'Duelist', 'Controller', 'Initiator', 'Sentinel'] as const).map((r) => (
+                            <button
+                              key={r}
+                              type="button"
+                              onClick={() => setComfortRoleFilter(r)}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase transition ${
+                                comfortRoleFilter === r
+                                  ? 'bg-zinc-800 text-white'
+                                  : 'text-zinc-500 hover:text-zinc-300'
+                              }`}
+                            >
+                              {r === 'ALL' ? 'ทั้งหมด' : r.slice(0, 4)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Agent Grid */}
+                      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-56 overflow-y-auto p-2 bg-zinc-950/70 border border-zinc-800 rounded-xl">
+                        {AGENTS.filter((a) => {
+                          const matchSearch = a.name.toLowerCase().includes(comfortSearch.toLowerCase().trim());
+                          const matchRole = comfortRoleFilter === 'ALL' || a.role === comfortRoleFilter;
+                          return matchSearch && matchRole;
+                        }).map((ag) => {
+                          const isComfort = (activeProfile.comfortAgents || []).includes(ag.name);
+
+                          return (
+                            <button
+                              key={ag.name}
+                              type="button"
+                              onClick={() => {
+                                const curr = activeProfile.comfortAgents || [];
+                                const next = curr.includes(ag.name)
+                                  ? curr.filter((n) => n !== ag.name)
+                                  : [...curr, ag.name];
+                                onSetComfortAgents?.(selectedPlayerIndex, next);
+                              }}
+                              className={`relative p-2 rounded-lg border flex flex-col items-center gap-1 transition-all ${
+                                isComfort
+                                  ? 'bg-red-950/40 border-red-500 shadow-md shadow-red-500/20 scale-102'
+                                  : 'bg-zinc-900/60 border-zinc-800/80 hover:border-zinc-700 opacity-60 hover:opacity-100'
+                              }`}
+                            >
+                              {isComfort && (
+                                <div className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-red-600 text-white flex items-center justify-center text-[9px] font-black">
+                                  ✓
+                                </div>
+                              )}
+                              <img src={ag.image} alt={ag.name} className="w-8 h-8 object-contain" />
+                              <span className="text-[10px] font-bold text-white truncate max-w-full">
+                                {ag.name}
+                              </span>
+                              <span className="text-[8px] text-zinc-400 uppercase font-semibold">
+                                {ag.role}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>

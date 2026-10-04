@@ -1,8 +1,9 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { type Agent, type Role } from "@/data/valorant";
-import { Sword, Shield, Target, Users, RefreshCw, Trophy, Image as ImageIcon, Copy, Check, MessageSquare } from "lucide-react";
+import { type Agent, type Role, type ValorantMap } from "@/data/valorant";
+import { Sword, Shield, Target, Users, RefreshCw, Trophy, Image as ImageIcon, Copy, Check, MessageSquare, Zap } from "lucide-react";
 import { Button } from "./ui/button";
 import { useMemo, useState } from "react";
+import { generateTacticalBrief } from "@/utils/tacticalBrief";
 
 import { type PlayerProfile } from "@/types/player";
 
@@ -116,6 +117,10 @@ export function VictoryScreen({
     return counts;
   }, [players, assignments]);
 
+  const tacticalBrief = useMemo(() => {
+    return generateTacticalBrief(assignments, (mapName as ValorantMap) || null);
+  }, [assignments, mapName]);
+
   return (
     <AnimatePresence>
       {show && (
@@ -123,7 +128,7 @@ export function VictoryScreen({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto"
           onClick={onClose}
         >
           {/* Valorant-style diagonal lines background */}
@@ -164,17 +169,15 @@ export function VictoryScreen({
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.8, y: 50 }}
             transition={{ type: "spring", damping: 20 }}
-            className="relative bg-gradient-to-br from-zinc-900/95 via-zinc-800/95 to-zinc-900/95 border border-red-500/30 rounded-lg p-8 max-w-5xl w-full shadow-2xl shadow-red-500/20 overflow-hidden"
+            className="relative bg-gradient-to-br from-zinc-900/95 via-zinc-800/95 to-zinc-900/95 border border-red-500/30 rounded-lg p-6 md:p-8 max-w-5xl w-full shadow-2xl shadow-red-500/20 my-auto"
             onClick={(e) => e.stopPropagation()}
           >
-
-
             {/* Title */}
             <motion.h2
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              className="text-4xl font-black text-center text-transparent bg-clip-text bg-gradient-to-r from-red-400 to-red-600 uppercase tracking-widest mt-4 mb-6"
+              className="text-4xl font-black text-center text-transparent bg-clip-text bg-gradient-to-r from-red-400 to-red-600 uppercase tracking-widest mt-2 mb-5"
             >
               Team Ready
             </motion.h2>
@@ -184,12 +187,12 @@ export function VictoryScreen({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 }}
-              className="grid grid-cols-4 gap-2 mb-6"
+              className="grid grid-cols-4 gap-2 mb-4"
             >
               {(Object.entries(roleCount) as [Role, number][]).map(([role, count]) => (
                 <div 
                   key={role}
-                  className="flex flex-col items-center p-3 bg-zinc-800/50 rounded-lg border border-zinc-700/50"
+                  className="flex flex-col items-center p-2.5 bg-zinc-800/50 rounded-lg border border-zinc-700/50"
                 >
                   <div className={`flex items-center gap-1 ${getRoleColor(role)}`}>
                     {getRoleIcon(role)}
@@ -198,6 +201,55 @@ export function VictoryScreen({
                   <span className="text-xs text-zinc-400">{role}</span>
                 </div>
               ))}
+            </motion.div>
+
+            {/* Radiant IGL Tactical Brief */}
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.45 }}
+              className="mb-6 p-4 rounded-xl bg-zinc-950/80 border border-red-500/25 backdrop-blur-sm relative overflow-hidden"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800/80 pb-2.5 mb-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-red-600/30 text-red-400 border border-red-500/40 flex items-center gap-1">
+                    <Zap className="w-3 h-3 text-red-400" />
+                    IGL Brief
+                  </span>
+                  <h3 className="text-sm font-bold text-white tracking-wide">
+                    {tacticalBrief.headline}
+                  </h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-purple-950/60 text-purple-300 border border-purple-500/30">
+                    Tempo: {tacticalBrief.tempo}
+                  </span>
+                  <span className="text-[11px] px-2 py-0.5 rounded font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                    Grade: {tacticalBrief.ratingGrade}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs">
+                <div className="bg-zinc-900/60 rounded-lg p-2.5 border border-zinc-800/70">
+                  <div className="font-bold text-amber-400 mb-1 flex items-center gap-1">
+                    <span>🎯 Win Condition</span>
+                  </div>
+                  <p className="text-zinc-300 text-[11px] leading-relaxed">{tacticalBrief.winCondition}</p>
+                </div>
+                <div className="bg-zinc-900/60 rounded-lg p-2.5 border border-zinc-800/70">
+                  <div className="font-bold text-red-400 mb-1 flex items-center gap-1">
+                    <span>⚔️ Attack Plan</span>
+                  </div>
+                  <p className="text-zinc-300 text-[11px] leading-relaxed">{tacticalBrief.attackStrategy}</p>
+                </div>
+                <div className="bg-zinc-900/60 rounded-lg p-2.5 border border-zinc-800/70">
+                  <div className="font-bold text-cyan-400 mb-1 flex items-center gap-1">
+                    <span>🛡️ Defense Plan</span>
+                  </div>
+                  <p className="text-zinc-300 text-[11px] leading-relaxed">{tacticalBrief.defenseStrategy}</p>
+                </div>
+              </div>
             </motion.div>
 
             {/* Player assignments - Large Card Layout */}

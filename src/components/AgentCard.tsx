@@ -4,7 +4,7 @@ import { type AgentStrategyProfile } from "@/data/meta";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { LazyImage } from "@/components/LazyImage";
-import { Zap, Shield, Target, Users, Sparkles, Star, TrendingUp, TrendingDown, Minus, X, Info, Lock, Unlock, RotateCw } from "lucide-react";
+import { Zap, Shield, Target, Users, Sparkles, Star, TrendingUp, TrendingDown, Minus, X, Info, Lock, Unlock, RotateCw, ArrowLeftRight } from "lucide-react";
 import { useState } from "react";
 
 // Type alias for player status
@@ -172,6 +172,8 @@ interface AgentCardProps {
   readonly isPinned?: boolean;
   readonly onTogglePin?: () => void;
   readonly onRerollSingle?: () => void;
+  readonly onSwapWithPlayer?: (targetIndex: number) => void;
+  readonly teammates?: Array<{ index: number; name: string; agentName?: string }>;
 }
 
 export function AgentCard({ 
@@ -194,11 +196,14 @@ export function AgentCard({
   isPinned,
   onTogglePin,
   onRerollSingle,
+  onSwapWithPlayer,
+  teammates,
 }: AgentCardProps) {
   // If no agent yet, showing a placeholder or waiting
   const displayAgent = agent || { name: '?', role: 'Duelist', image: '', color: '#333' };
   const [showInfo, setShowInfo] = useState(false);
-  const hasQuickActions = Boolean(!rolling && !canEdit && agent && (onRerollSingle || onTogglePin));
+  const [showSwapMenu, setShowSwapMenu] = useState(false);
+  const hasQuickActions = Boolean(!rolling && !canEdit && agent && (onRerollSingle || onTogglePin || (onSwapWithPlayer && teammates && teammates.length > 0)));
 
   return (
     <motion.div
@@ -261,9 +266,62 @@ export function AgentCard({
            style={{ background: `linear-gradient(to bottom, ${displayAgent.color || '#333'}, transparent)` }}
         />
 
-        {/* Quick Actions (Re-roll single & Lock/Pin) */}
+        {/* Quick Actions (Swap & Re-roll single & Lock/Pin) */}
         {hasQuickActions && (
           <div className="absolute top-2 right-2 z-30 flex items-center gap-1.5">
+            {onSwapWithPlayer && teammates && teammates.length > 0 && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (teammates.length === 1) {
+                      onSwapWithPlayer(teammates[0].index);
+                    } else {
+                      setShowSwapMenu(prev => !prev);
+                    }
+                  }}
+                  title="สลับตัวกับเพื่อนร่วมทีม (Swap / Trade Agent)"
+                  className={cn(
+                    "p-1.5 rounded-md border backdrop-blur-sm transition-all shadow-sm active:scale-90",
+                    showSwapMenu
+                      ? "bg-purple-600 text-white border-purple-400"
+                      : "bg-zinc-950/80 hover:bg-purple-600 text-zinc-300 hover:text-white border-zinc-700/80"
+                  )}
+                  aria-label="Swap agent with teammate"
+                >
+                  <ArrowLeftRight className="w-3.5 h-3.5" />
+                </button>
+
+                {showSwapMenu && (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute top-8 right-0 z-50 bg-zinc-950/95 border border-purple-500/40 rounded-lg p-1.5 shadow-2xl backdrop-blur-md min-w-[160px] animate-in fade-in zoom-in-95"
+                  >
+                    <div className="text-[10px] uppercase font-bold text-purple-400 mb-1 px-1.5 flex items-center gap-1">
+                      <ArrowLeftRight className="w-3 h-3" />
+                      สลับตัวกับ...
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      {teammates.map((t) => (
+                        <button
+                          key={t.index}
+                          type="button"
+                          onClick={() => {
+                            onSwapWithPlayer(t.index);
+                            setShowSwapMenu(false);
+                          }}
+                          className="flex items-center justify-between text-left text-xs text-white hover:bg-purple-600/30 hover:border-purple-500/40 border border-transparent rounded px-2 py-1 transition"
+                        >
+                          <span className="font-semibold truncate max-w-[85px]">{t.name}</span>
+                          <span className="text-[10px] text-zinc-400 truncate">{t.agentName || '?'}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             {onRerollSingle && (
               <button
                 type="button"
