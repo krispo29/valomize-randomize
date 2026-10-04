@@ -1476,6 +1476,16 @@ function App() {
             setToastMessage(`🏆 เลือกด่านจากการ Veto: ${map}`);
             setTimeout(() => setToastMessage(null), 3000);
           }}
+          onSelectAndRoll={(map) => {
+            setSelectedMap(map);
+            setShowMapVetoModal(false);
+            playLock();
+            setToastMessage(`🏆 เลือกด่าน ${map} และกำลังสุ่มตัวละคร...`);
+            setTimeout(() => {
+              handleRollSafe();
+              setToastMessage(null);
+            }, 300);
+          }}
           onPlaySound={playClick}
         />
 
