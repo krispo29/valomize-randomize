@@ -7,7 +7,7 @@ import { DEFAULT_FRIENDS, type Agent, type Role, type ValorantMap, MAP_META, MAP
 import { valorantMeta2026, type AgentStrategyProfile } from '@/data/meta';
 import { 
   Shuffle, UserCog, Settings2, Map as MapIcon, Volume2, VolumeX, 
-  BarChart3, Trophy, Globe, Zap, Ban, Keyboard, Tv, Copy, Swords, Dices, Eye, ArrowUpDown, UserCheck
+  BarChart3, Trophy, Globe, Zap, Ban, Keyboard, Tv, Copy, Swords, Dices, Eye, ArrowUpDown, UserCheck, RefreshCw
 } from 'lucide-react';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
@@ -33,6 +33,7 @@ import { GunChallengeModal } from '@/components/GunChallengeModal';
 import { InAppBrowserBanner } from '@/components/InAppBrowserBanner';
 import { FloatingEmojiReactions } from '@/components/FloatingEmojiReactions';
 import { ReadyCheckModal } from '@/components/ReadyCheckModal';
+import { RoomActivityTicker } from '@/components/RoomActivityTicker';
 import { generateTacticalBrief } from '@/utils/tacticalBrief';
 import jettLogo from '@/assets/jett_logo.png';
 
@@ -138,6 +139,15 @@ function App() {
     respondReadyCheck,
     cancelReadyCheck,
     closeReadyCheck,
+    mapVotes,
+    myVotedMap,
+    voteMap,
+    rerollRequests,
+    hasRequestedReroll,
+    toggleRerollRequest,
+    clearRerollRequests,
+    pingMs,
+    activityLog,
   } = useMultiplayerRoom(
     handleRemoteState,
     (incomingMatch) => {
@@ -751,6 +761,7 @@ function App() {
 
   const handleRollSafe = async () => {
     if (phase !== 'IDLE' || isGuest) return;
+    clearRerollRequests();
     
     // TURBO MODE: 0.1s instant roll, skips deal animation
     if (isTurbo) {
@@ -1291,6 +1302,16 @@ function App() {
                   )}
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
+                  <div 
+                    className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/40 border border-white/10 text-[10px] font-bold"
+                    title={`สถานะการเชื่อมต่อ: ${roomConnectionStatus} ${pingMs ? `(Latency: ${pingMs}ms)` : ''}`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                      roomConnectionStatus === 'CONNECTED' ? 'bg-emerald-400 animate-pulse' :
+                      roomConnectionStatus === 'CONNECTING' ? 'bg-amber-400 animate-ping' : 'bg-red-500'
+                    }`} />
+                    <span>{roomConnectionStatus === 'CONNECTED' ? (pingMs ? `${pingMs}ms` : 'Live') : roomConnectionStatus}</span>
+                  </div>
                   <button
                     type="button"
                     onClick={() => setShowMultiplayerModal(true)}
@@ -1308,19 +1329,27 @@ function App() {
         {phase === 'IDLE' && (
             <div className="mb-8">
                 {/* Collapsible Areas */}
-                {!isGuest && (showMapSelector || selectedMap) && (
+                {(!isGuest || isInRoom) && (showMapSelector || selectedMap) && (
                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mb-4">
                     <ErrorBoundary>
                     <Suspense fallback={<div className="text-zinc-400 text-center">Loading selector...</div>}>
                         <MapSelector 
                         selectedMap={selectedMap} 
                         onSelectMap={(map) => {
+                            if (isGuest) {
+                              if (map) voteMap(map);
+                              return;
+                            }
                             setSelectedMap(map);
                             if (map) { setShowSettings(false); setShowMapSelector(false); }
                             else { setShowMapSelector(false); }
                         }} 
                         isExpanded={showMapSelector}
                         onToggleExpand={() => setShowMapSelector(!showMapSelector)}
+                        isGuest={isGuest}
+                        mapVotes={mapVotes}
+                        myVotedMap={myVotedMap}
+                        onVoteMap={isInRoom ? voteMap : undefined}
                         />
                     </Suspense>
                     </ErrorBoundary>
@@ -1376,18 +1405,38 @@ function App() {
                   />
                 )}
 
+                {/* Host notification of reroll requests */}
+                {isInRoom && isHost && rerollRequests.length > 0 && (
+                  <div className="w-full flex justify-center mb-3">
+                    <div className="px-4 py-2 rounded-xl bg-amber-950/70 border border-amber-500/60 text-amber-200 text-xs font-bold flex items-center justify-between gap-3 shadow-lg shadow-amber-500/20 backdrop-blur-md animate-pulse max-w-lg">
+                      <div className="flex items-center gap-2 truncate">
+                        <RefreshCw className="w-4 h-4 text-amber-400 animate-spin shrink-0" />
+                        <span className="truncate">เพื่อนขอสุ่มใหม่ {rerollRequests.length} คน: {rerollRequests.map(r => r.playerName).join(', ')}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRollSafe}
+                        className="px-3 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white font-black text-xs shrink-0 transition"
+                      >
+                        สุ่มใหม่เลย
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Buttons */}
                 <div className="flex flex-wrap justify-center gap-2 md:gap-4 items-center">
-                    {/* Map Selection button - Host only */}
-                    {!isGuest && (
+                    {/* Map Selection button - Host or In-Room Guests */}
+                    {(!isGuest || isInRoom) && (
                       <Button
                           variant="outline"
                           onClick={() => { setShowMapSelector(!showMapSelector); if (!showMapSelector) setShowSettings(false); }}
                           className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${(showMapSelector || selectedMap) ? 'border-red-500 bg-zinc-700' : ''}`}
-                          title="Map Meta Selection (M)"
+                          title={isGuest ? "โหวตแมพที่อยากเล่น (Map Preference Vote)" : "Map Meta Selection (M)"}
                           aria-label={showMapSelector ? "Hide map selector" : "Show map selector"}
                       >
-                          <MapIcon className={`h-6 w-6 ${selectedMap ? 'text-red-400' : ''}`} />
+                          <MapIcon className={`h-6 w-6 ${selectedMap ? 'text-red-400' : myVotedMap ? 'text-rose-400' : ''}`} />
+                          {isGuest && <span className="ml-1 text-xs font-bold text-rose-300">โหวตแมพ</span>}
                       </Button>
                     )}
 
@@ -1407,10 +1456,31 @@ function App() {
                           {isTurbo ? '⚡ TURBO ROLL (0.1s)' : 'RANDOMIZE AGENTS'}
                       </Button>
                     ) : (
-                      <div className="flex items-center gap-3 px-6 py-4 md:px-8 md:py-5 rounded-xl bg-cyan-950/60 border border-cyan-500/40 text-cyan-300 font-bold tracking-wide text-xs md:text-sm shadow-xl shadow-cyan-500/10 backdrop-blur-md">
-                        <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse shrink-0" />
-                        <Eye className="w-5 h-5 text-cyan-400 shrink-0" />
-                        <span>กำลังรับชมสดจากหัวห้อง — รอหัวห้องกดสุ่มตัวละคร</span>
+                      <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3">
+                        <div className="flex items-center gap-3 px-6 py-4 md:px-8 md:py-5 rounded-xl bg-cyan-950/60 border border-cyan-500/40 text-cyan-300 font-bold tracking-wide text-xs md:text-sm shadow-xl shadow-cyan-500/10 backdrop-blur-md">
+                          <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse shrink-0" />
+                          <Eye className="w-5 h-5 text-cyan-400 shrink-0" />
+                          <span>กำลังรับชมสดจากหัวห้อง — รอหัวห้องกดสุ่มตัวละคร</span>
+                        </div>
+
+                        {Object.keys(assignmentsByIndex).length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              toggleRerollRequest();
+                              playClick();
+                            }}
+                            className={`px-4 py-3.5 rounded-xl border font-bold text-xs flex items-center gap-2 transition active:scale-95 shadow-lg ${
+                              hasRequestedReroll
+                                ? 'bg-amber-950/80 border-amber-500 text-amber-300 shadow-amber-500/20'
+                                : 'bg-zinc-900/80 border-zinc-700 text-zinc-300 hover:text-white hover:border-amber-500/40'
+                            }`}
+                            title="ส่งสัญญาณบอกหัวห้องว่าอยากให้กดสุ่มใหม่อีกรอบ"
+                          >
+                            <RefreshCw className={`w-4 h-4 ${hasRequestedReroll ? 'text-amber-400 animate-spin' : 'text-zinc-400'}`} />
+                            <span>{hasRequestedReroll ? `ขอกดใหม่แล้ว (${rerollRequests.length})` : `ขอสุ่มใหม่ (${rerollRequests.length})`}</span>
+                          </button>
+                        )}
                       </div>
                     )}
                     
@@ -1712,6 +1782,10 @@ function App() {
           onRecordMatch={!isGuest ? () => setShowRecordMatch(true) : undefined}
           onShareCard={() => setShowShareCardModal(true)}
           roomCode={roomCode}
+          isGuest={isGuest}
+          rerollCount={rerollRequests.length}
+          hasRequestedReroll={hasRequestedReroll}
+          onRequestReroll={isInRoom && isGuest ? toggleRerollRequest : undefined}
         />
 
         <StatsDashboard
@@ -1818,6 +1892,9 @@ function App() {
             handleRollSafe();
           }}
         />
+
+        {/* Real-time Room Activity Ticker */}
+        {isInRoom && <RoomActivityTicker activities={activityLog} />}
 
         {/* Live Member Join Floating Toast */}
         {memberToast && (

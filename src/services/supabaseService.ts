@@ -481,6 +481,50 @@ export async function broadcastTabVisibility(
   await broadcastRoomMessage(cleanCode, msg);
 }
 
+export async function broadcastMapVote(
+  roomCode: string,
+  sender: string,
+  memberId: string,
+  mapName: string,
+  hasVoted: boolean
+): Promise<void> {
+  const cleanCode = sanitizeRoomCode(roomCode);
+  const msg: MultiplayerSyncMessage = {
+    type: 'MAP_VOTE',
+    roomCode: cleanCode,
+    sender,
+    timestamp: Date.now(),
+    payload: {
+      mapName,
+      memberId,
+      playerName: sender,
+      hasVoted,
+    },
+  };
+  await broadcastRoomMessage(cleanCode, msg);
+}
+
+export async function broadcastRerollRequest(
+  roomCode: string,
+  sender: string,
+  memberId: string,
+  requested: boolean
+): Promise<void> {
+  const cleanCode = sanitizeRoomCode(roomCode);
+  const msg: MultiplayerSyncMessage = {
+    type: 'REROLL_REQUEST',
+    roomCode: cleanCode,
+    sender,
+    timestamp: Date.now(),
+    payload: {
+      memberId,
+      playerName: sender,
+      requested,
+    },
+  };
+  await broadcastRoomMessage(cleanCode, msg);
+}
+
 
 export async function saveRoomStateToDatabase(
   roomCode: string,

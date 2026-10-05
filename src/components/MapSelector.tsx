@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { type ValorantMap, MAPS, ACTIVE_COMPETITIVE_MAPS, MAP_META_AGENTS, MAP_IMAGES, AGENTS } from "@/data/valorant";
 import { valorantMeta2026 } from '@/data/meta';
-import { MapPin, Users, Shield, Sword, Target, ChevronDown, ChevronUp } from "lucide-react";
+import { MapPin, Users, Shield, Sword, Target, ChevronDown, ChevronUp, Heart } from "lucide-react";
 
 // Helper to get tier color
 const getTierColor = (tier: string) => {
@@ -18,17 +18,39 @@ interface MapSelectorProps {
   readonly onSelectMap: (map: ValorantMap | null) => void;
   readonly isExpanded: boolean;
   readonly onToggleExpand: () => void;
+  readonly isGuest?: boolean;
+  readonly mapVotes?: Record<string, string[]>;
+  readonly myVotedMap?: string | null;
+  readonly onVoteMap?: (mapName: string) => void;
 }
 
-export function MapSelector({ selectedMap, onSelectMap, isExpanded, onToggleExpand }: MapSelectorProps) {
+export function MapSelector({ 
+  selectedMap, 
+  onSelectMap, 
+  isExpanded, 
+  onToggleExpand,
+  isGuest = false,
+  mapVotes = {},
+  myVotedMap = null,
+  onVoteMap,
+}: MapSelectorProps) {
+  const maxVotes = Math.max(0, ...Object.values(mapVotes).map((v) => v.length));
+
   return (
     <div className="bg-zinc-900 border border-zinc-700 p-4 rounded-lg mb-8 max-w-4xl mx-auto shadow-xl transition-all duration-300">
       <div className="flex items-center gap-2 mb-4 border-b border-zinc-800 pb-2">
          <MapPin className="h-5 w-5 text-red-500" />
-         <h3 className="text-white font-bold uppercase tracking-wider">Select Map Meta</h3>
+         <h3 className="text-white font-bold uppercase tracking-wider">
+           {isGuest ? 'Map Meta & Squad Vote' : 'Select Map Meta'}
+         </h3>
+         {onVoteMap && (
+           <span className="hidden sm:inline-block text-[11px] text-rose-400/90 font-medium ml-2 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
+             ❤️ กดหัวใจเพื่อร่วมโหวตแมพที่อยากเล่น
+           </span>
+         )}
          
          <div className="ml-auto flex items-center gap-2">
-           {selectedMap && (
+           {!isGuest && selectedMap && (
              <Button 
                variant="ghost" 
                size="sm" 
@@ -53,43 +75,87 @@ export function MapSelector({ selectedMap, onSelectMap, isExpanded, onToggleExpa
       {isExpanded ? (
         <>
           <div className="flex flex-wrap justify-center gap-2">
-            {MAPS.map((mapName) => (
-              <button
-                key={mapName}
-                onClick={() => onSelectMap(selectedMap === mapName ? null : mapName)}
-                className={`
-                  relative group px-4 py-2 rounded-sm text-sm font-bold uppercase tracking-widest transition-all overflow-hidden
-                  ${selectedMap === mapName 
-                    ? 'bg-red-600 text-white shadow-[0_0_15px_rgba(220,38,38,0.4)] border-red-500' 
-                    : 'bg-zinc-950 text-zinc-500 border border-zinc-800 hover:border-zinc-600 hover:text-zinc-300'}
-                `}
-                aria-label={`Select ${mapName} map${selectedMap === mapName ? ' (selected)' : ''}`}
-                aria-pressed={selectedMap === mapName}
-              >
-                <div className="absolute inset-0 opacity-20 group-hover:opacity-30 transition-opacity">
-                  <img 
-                    src={MAP_IMAGES[mapName]} 
-                    alt={mapName}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
-                </div>
-                <span className="relative z-10 flex items-center justify-center gap-1.5">
-                  {mapName}
-                  {ACTIVE_COMPETITIVE_MAPS.includes(mapName) && (
-                    <span 
-                      className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)] shrink-0" 
-                      title="Active Competitive Pool (Champions 2026)" 
+            {MAPS.map((mapName) => {
+              const votes = mapVotes[mapName] || [];
+              const voteCount = votes.length;
+              const isMyVote = myVotedMap === mapName;
+              const isTopVoted = maxVotes > 0 && voteCount === maxVotes;
+
+              return (
+                <button
+                  key={mapName}
+                  onClick={() => {
+                    if (isGuest && onVoteMap) {
+                      onVoteMap(mapName);
+                    } else {
+                      onSelectMap(selectedMap === mapName ? null : mapName);
+                    }
+                  }}
+                  className={`
+                    relative group px-3.5 py-2 rounded-sm text-sm font-bold uppercase tracking-widest transition-all overflow-hidden
+                    ${selectedMap === mapName 
+                      ? 'bg-red-600 text-white shadow-[0_0_15px_rgba(220,38,38,0.4)] border-red-500' 
+                      : isTopVoted
+                      ? 'bg-zinc-950 text-amber-200 border border-amber-500/60 shadow-[0_0_10px_rgba(245,158,11,0.2)]'
+                      : 'bg-zinc-950 text-zinc-500 border border-zinc-800 hover:border-zinc-600 hover:text-zinc-300'}
+                  `}
+                  aria-label={`${isGuest ? 'Vote for' : 'Select'} ${mapName} map${selectedMap === mapName ? ' (selected)' : ''}`}
+                  aria-pressed={selectedMap === mapName}
+                >
+                  <div className="absolute inset-0 opacity-20 group-hover:opacity-30 transition-opacity">
+                    <img 
+                      src={MAP_IMAGES[mapName]} 
+                      alt={mapName}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
                     />
+                  </div>
+                  
+                  {isTopVoted && (
+                    <div className="absolute top-0.5 left-1 z-20 px-1 rounded bg-amber-500 text-black text-[8px] font-black uppercase tracking-tight shadow">
+                      👑 Top Vote
+                    </div>
                   )}
-                </span>
-                {selectedMap === mapName && (
-                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-zinc-900"></div>
-                )}
-              </button>
-            ))}
+
+                  <span className="relative z-10 flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-1.5">
+                      {mapName}
+                      {ACTIVE_COMPETITIVE_MAPS.includes(mapName) && (
+                        <span 
+                          className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)] shrink-0" 
+                          title="Active Competitive Pool (Champions 2026)" 
+                        />
+                      )}
+                    </span>
+
+                    {onVoteMap && (
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onVoteMap(mapName);
+                        }}
+                        className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer transition ${
+                          isMyVote
+                            ? 'bg-rose-500 text-white shadow-[0_0_6px_rgba(244,63,94,0.7)] scale-105'
+                            : voteCount > 0
+                            ? 'bg-zinc-800 text-rose-300 border border-rose-500/40 hover:bg-zinc-700'
+                            : 'text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10'
+                        }`}
+                        title={voteCount > 0 ? `โหวตโดย: ${votes.join(', ')}` : 'คลิกเพื่อโหวตแมพนี้'}
+                      >
+                        <Heart className={`w-3 h-3 ${isMyVote ? 'fill-white text-white' : voteCount > 0 ? 'fill-rose-400 text-rose-400' : ''}`} />
+                        {voteCount > 0 && <span>{voteCount}</span>}
+                      </span>
+                    )}
+                  </span>
+                  {selectedMap === mapName && (
+                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-zinc-900"></div>
+                  )}
+                </button>
+              );
+            })}
           </div>
           
           {!selectedMap && (

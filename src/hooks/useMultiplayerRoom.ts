@@ -11,6 +11,9 @@ import {
   type ReadyCheckResponsePayload,
   type ReadyCheckEndPayload,
   type TabVisibilityPayload,
+  type MapVotePayload,
+  type RerollRequestPayload,
+  type RoomActivityItem,
 } from '@/types/multiplayer';
 import { type MatchRecord } from '@/types/stats';
 import {
@@ -39,6 +42,8 @@ import {
   broadcastReadyCheckResponse,
   broadcastReadyCheckEnd,
   broadcastTabVisibility,
+  broadcastMapVote,
+  broadcastRerollRequest,
   fetchRoomMembers,
   saveRoomStateToDatabase,
 } from '@/services/supabaseService';
@@ -83,6 +88,33 @@ export function useMultiplayerRoom(
     'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'ERROR'
   >('DISCONNECTED');
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
+
+  // QoL Phase 3 States
+  const [mapVotes, setMapVotes] = useState<Record<string, string[]>>({});
+  const [myVotedMap, setMyVotedMap] = useState<string | null>(null);
+  const [rerollRequests, setRerollRequests] = useState<Array<{ memberId: string; playerName: string }>>([]);
+  const [activityLog, setActivityLog] = useState<RoomActivityItem[]>([]);
+  const [pingMs, setPingMs] = useState<number | null>(null);
+
+  const addActivityLog = useCallback((text: string, icon?: string) => {
+    const newItem: RoomActivityItem = {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      text,
+      icon,
+      timestamp: Date.now(),
+    };
+    setActivityLog((prev) => [...prev.slice(-3), newItem]);
+  }, []);
+
+  // Auto clean-up activity log after 4.5s
+  useEffect(() => {
+    if (activityLog.length === 0) return;
+    const timer = setTimeout(() => {
+      const now = Date.now();
+      setActivityLog((prev) => prev.filter((item) => now - item.timestamp < 4500));
+    }, 4500);
+    return () => clearTimeout(timer);
+  }, [activityLog]);
 
   // Room presence & member list
   const [members, setMembers] = useState<RoomMember[]>([]);
@@ -224,9 +256,41 @@ export function useMultiplayerRoom(
           });
           onReadyCheckEnd?.(payload);
         }
+      } else if (msg.type === 'MAP_VOTE') {
+        const payload = msg.payload as MapVotePayload;
+        if (payload) {
+          setMapVotes((prev) => {
+            const next = { ...prev };
+            // Ensure each player has only 1 active vote
+            Object.keys(next).forEach((m) => {
+              next[m] = (next[m] || []).filter((name) => name !== payload.playerName);
+            });
+            if (payload.hasVoted) {
+              next[payload.mapName] = [...(next[payload.mapName] || []), payload.playerName];
+            }
+            return next;
+          });
+          if (payload.hasVoted) {
+            addActivityLog(`${payload.playerName} โหวต ${payload.mapName}`, '❤️');
+          }
+        }
+      } else if (msg.type === 'REROLL_REQUEST') {
+        const payload = msg.payload as RerollRequestPayload;
+        if (payload) {
+          setRerollRequests((prev) => {
+            const filtered = prev.filter((r) => r.memberId !== payload.memberId);
+            if (payload.requested) {
+              return [...filtered, { memberId: payload.memberId, playerName: payload.playerName }];
+            }
+            return filtered;
+          });
+          if (payload.requested) {
+            addActivityLog(`${payload.playerName} ขอให้สุ่มใหม่`, '🔄');
+          }
+        }
       }
     },
-    [onRemoteStateReceived, onRemoteMatchReceived, onHostTransferred, onMemberKicked, onSelfKicked, onSlotUpdated, onEmojiReaction, onReadyCheckStart, onReadyCheckEnd, isHost]
+    [onRemoteStateReceived, onRemoteMatchReceived, onHostTransferred, onMemberKicked, onSelfKicked, onSlotUpdated, onEmojiReaction, onReadyCheckStart, onReadyCheckEnd, isHost, addActivityLog]
   );
 
   // Auto-connect if room query parameter exists
@@ -317,6 +381,7 @@ export function useMultiplayerRoom(
 
     const doHeartbeat = async () => {
       try {
+        const pingStart = performance.now();
         const res = await sendRoomHeartbeat({
           roomCode,
           playerName: myPlayerName,
@@ -324,8 +389,10 @@ export function useMultiplayerRoom(
           isHost,
           slotIndex: mySlotIndex,
         });
+        const pingElapsed = Math.round(performance.now() - pingStart);
 
         if (!isMounted) return;
+        setPingMs(pingElapsed);
 
         const activeList = res.members;
 
@@ -343,6 +410,7 @@ export function useMultiplayerRoom(
                 previousHostName: 'หัวห้องเดิม (ขาดการเชื่อมต่อ)',
               });
               broadcastHostTransfer(roomCode, self.id, myPlayerName, 'หัวห้องเดิม');
+              addActivityLog(`คุณได้รับสิทธิ์เป็นหัวห้องแล้ว 👑`, '👑');
             } else if (!self.isHost && isHost) {
               setIsHost(false);
               removeRoomHost(roomCode);
@@ -361,6 +429,7 @@ export function useMultiplayerRoom(
           activeList.forEach((m) => {
             if (!m.isSelf && !prevMemberIdsRef.current.has(m.id)) {
               onMemberJoined?.(m);
+              addActivityLog(`${m.playerName} เข้าร่วมห้อง`, '👋');
             }
           });
 
@@ -379,7 +448,7 @@ export function useMultiplayerRoom(
       isMounted = false;
       clearInterval(interval);
     };
-  }, [roomCode, myPlayerName, isHost, mySlotIndex, onMemberJoined]);
+  }, [roomCode, myPlayerName, isHost, mySlotIndex, onMemberJoined, addActivityLog]);
 
   const updatePlayerName = useCallback((name: string) => {
     const trimmed = name.trim();
@@ -412,6 +481,11 @@ export function useMultiplayerRoom(
     setLastSyncedAt(null);
     setMembers([]);
     prevMemberIdsRef.current = new Set();
+    setMapVotes({});
+    setMyVotedMap(null);
+    setRerollRequests([]);
+    setActivityLog([]);
+    setPingMs(null);
 
     try {
       const url = new URL(window.location.href);
@@ -675,6 +749,58 @@ export function useMultiplayerRoom(
     setActiveReadyCheck(null);
   }, []);
 
+  const voteMap = useCallback(
+    (mapName: string) => {
+      if (!roomCode) return;
+      const isCurrentlyVoted = myVotedMap === mapName;
+      const nextVoted = isCurrentlyVoted ? null : mapName;
+      setMyVotedMap(nextVoted);
+
+      setMapVotes((prev) => {
+        const next = { ...prev };
+        Object.keys(next).forEach((m) => {
+          next[m] = (next[m] || []).filter((name) => name !== myPlayerName);
+        });
+        if (nextVoted) {
+          next[nextVoted] = [...(next[nextVoted] || []), myPlayerName];
+        }
+        return next;
+      });
+
+      broadcastMapVote(
+        roomCode,
+        myPlayerName,
+        sessionIdRef.current,
+        mapName,
+        !isCurrentlyVoted
+      ).catch(() => {});
+    },
+    [roomCode, myVotedMap, myPlayerName]
+  );
+
+  const toggleRerollRequest = useCallback(
+    (forceVal?: boolean) => {
+      if (!roomCode) return;
+      const isAlready = rerollRequests.some((r) => r.memberId === sessionIdRef.current);
+      const nextVal = forceVal !== undefined ? forceVal : !isAlready;
+
+      setRerollRequests((prev) => {
+        const filtered = prev.filter((r) => r.memberId !== sessionIdRef.current);
+        if (nextVal) {
+          return [...filtered, { memberId: sessionIdRef.current, playerName: myPlayerName }];
+        }
+        return filtered;
+      });
+
+      broadcastRerollRequest(roomCode, myPlayerName, sessionIdRef.current, nextVal).catch(() => {});
+    },
+    [roomCode, rerollRequests, myPlayerName]
+  );
+
+  const clearRerollRequests = useCallback(() => {
+    setRerollRequests([]);
+  }, []);
+
   return {
     roomCode,
     isHost,
@@ -701,5 +827,14 @@ export function useMultiplayerRoom(
     respondReadyCheck,
     cancelReadyCheck,
     closeReadyCheck,
+    mapVotes,
+    myVotedMap,
+    voteMap,
+    rerollRequests,
+    hasRequestedReroll: rerollRequests.some((r) => r.memberId === sessionIdRef.current),
+    toggleRerollRequest,
+    clearRerollRequests,
+    pingMs,
+    activityLog,
   };
 }

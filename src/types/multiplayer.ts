@@ -85,6 +85,26 @@ export interface TabVisibilityPayload {
   isAway: boolean;
 }
 
+export interface MapVotePayload {
+  mapName: string;
+  memberId: string;
+  playerName: string;
+  hasVoted: boolean;
+}
+
+export interface RerollRequestPayload {
+  memberId: string;
+  playerName: string;
+  requested: boolean;
+}
+
+export interface RoomActivityItem {
+  id: string;
+  text: string;
+  icon?: string;
+  timestamp: number;
+}
+
 export interface MultiplayerSyncMessage {
   type: 
     | 'STATE_SYNC' 
@@ -100,7 +120,9 @@ export interface MultiplayerSyncMessage {
     | 'READY_CHECK_START'
     | 'READY_CHECK_RESPONSE'
     | 'READY_CHECK_END'
-    | 'TAB_VISIBILITY';
+    | 'TAB_VISIBILITY'
+    | 'MAP_VOTE'
+    | 'REROLL_REQUEST';
   roomCode: string;
   sender: string;
   timestamp: number;

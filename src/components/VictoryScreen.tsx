@@ -20,6 +20,10 @@ interface VictoryScreenProps {
   readonly onShareCard?: () => void;
   readonly profiles?: Record<number, PlayerProfile>;
   readonly roomCode?: string | null;
+  readonly isGuest?: boolean;
+  readonly rerollCount?: number;
+  readonly hasRequestedReroll?: boolean;
+  readonly onRequestReroll?: () => void;
 }
 
 // Pre-generated particle positions to avoid Math.random() during render
@@ -72,6 +76,10 @@ export function VictoryScreen({
   onShareCard,
   profiles,
   roomCode,
+  isGuest = false,
+  rerollCount = 0,
+  hasRequestedReroll = false,
+  onRequestReroll,
 }: VictoryScreenProps) {
   const [copiedText, setCopiedText] = useState(false);
   const [copiedInGame, setCopiedInGame] = useState(false);
@@ -426,13 +434,37 @@ export function VictoryScreen({
                   </>
                 )}
               </Button>
+              {isGuest && onRequestReroll && (
+                <Button
+                  onClick={onRequestReroll}
+                  variant="outline"
+                  className={`font-bold px-5 py-3 flex items-center gap-2 shadow transition ${
+                    hasRequestedReroll
+                      ? 'bg-amber-500/25 border-amber-500 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.4)]'
+                      : 'border-zinc-700 bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white hover:border-amber-500/50'
+                  }`}
+                  title="ส่งสัญญาณบอกหัวห้องว่าอยากให้กดสุ่มใหม่อีกรอบ"
+                >
+                  <RefreshCw className={`h-4 w-4 ${hasRequestedReroll ? 'text-amber-400 animate-spin' : 'text-zinc-400'}`} />
+                  <span>{hasRequestedReroll ? `ขอกดใหม่แล้ว (${rerollCount})` : `ขอสุ่มใหม่ (${rerollCount})`}</span>
+                </Button>
+              )}
               {onPlayAgain && (
                 <Button
                   onClick={onPlayAgain}
-                  className="bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-3 flex items-center gap-2 shadow-lg shadow-red-500/30"
+                  className={`text-white font-bold px-6 py-3 flex items-center gap-2 shadow-lg transition ${
+                    rerollCount > 0
+                      ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-500/40 border border-amber-400 animate-pulse'
+                      : 'bg-red-600 hover:bg-red-700 shadow-red-500/30'
+                  }`}
                 >
                   <RefreshCw className="h-5 w-5" />
-                  Roll Again
+                  <span>Roll Again</span>
+                  {rerollCount > 0 && (
+                    <span className="ml-1 px-1.5 py-0.5 rounded bg-black/40 text-xs font-black text-amber-200">
+                      ตี้ขอ {rerollCount} คน
+                    </span>
+                  )}
                 </Button>
               )}
               <Button
