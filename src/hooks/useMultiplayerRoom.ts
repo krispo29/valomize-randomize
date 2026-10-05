@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { type RoomState, type MultiplayerSyncMessage, type RoomMember } from '@/types/multiplayer';
+import { type RoomState, type MultiplayerSyncMessage, type RoomMember, type HostTransferredPayload } from '@/types/multiplayer';
 import { type MatchRecord } from '@/types/stats';
 import {
   subscribeToRoom,
@@ -14,12 +14,16 @@ import {
   isRoomHostStored,
   saveRoomHost,
   removeRoomHost,
+  transferRoomHost,
+  broadcastHostTransfer,
+  fetchRoomMembers,
 } from '@/services/supabaseService';
 
 export function useMultiplayerRoom(
   onRemoteStateReceived?: (state: RoomState) => void,
   onRemoteMatchReceived?: (match: MatchRecord) => void,
-  onMemberJoined?: (member: RoomMember) => void
+  onMemberJoined?: (member: RoomMember) => void,
+  onHostTransferred?: (payload: HostTransferredPayload) => void
 ) {
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [isHost, setIsHost] = useState<boolean>(() => {
@@ -76,9 +80,28 @@ export function useMultiplayerRoom(
         if (match) {
           onRemoteMatchReceived?.(match);
         }
+      } else if (msg.type === 'HOST_TRANSFERRED') {
+        const payload = msg.payload as HostTransferredPayload;
+        if (payload) {
+          onHostTransferred?.(payload);
+          const myId = `${sanitizeRoomCode(msg.roomCode)}_${sessionIdRef.current}`;
+          if (payload.newHostId === myId) {
+            setIsHost(true);
+            saveRoomHost(msg.roomCode, true);
+          } else if (isHost) {
+            setIsHost(false);
+            removeRoomHost(msg.roomCode);
+          }
+
+          fetchRoomMembers(msg.roomCode, sessionIdRef.current).then((updated) => {
+            if (Array.isArray(updated) && updated.length > 0) {
+              setMembers(updated);
+            }
+          });
+        }
       }
     },
-    [onRemoteStateReceived, onRemoteMatchReceived]
+    [onRemoteStateReceived, onRemoteMatchReceived, onHostTransferred, isHost]
   );
 
   // Auto-connect if room query parameter exists
@@ -188,6 +211,9 @@ export function useMultiplayerRoom(
             if (self.isHost && !isHost) {
               setIsHost(true);
               saveRoomHost(roomCode, true);
+            } else if (!self.isHost && isHost) {
+              setIsHost(false);
+              removeRoomHost(roomCode);
             }
           }
 
@@ -278,6 +304,34 @@ export function useMultiplayerRoom(
     [roomCode, isHost]
   );
 
+  const transferHost = useCallback(
+    async (targetMember: RoomMember): Promise<{ success: boolean; error?: string }> => {
+      if (!roomCode || !isHost) {
+        return { success: false, error: 'เฉพาะหัวห้องเท่านั้นที่สามารถโอนสิทธิ์ได้' };
+      }
+
+      const res = await transferRoomHost(roomCode, targetMember.id, sessionIdRef.current);
+      if (res.success) {
+        setIsHost(false);
+        removeRoomHost(roomCode);
+
+        await broadcastHostTransfer(
+          roomCode,
+          targetMember.id,
+          targetMember.playerName,
+          myPlayerName
+        );
+
+        if (Array.isArray(res.members) && res.members.length > 0) {
+          setMembers(res.members);
+        }
+        return { success: true };
+      }
+      return { success: false, error: res.error };
+    },
+    [roomCode, isHost, myPlayerName]
+  );
+
   return {
     roomCode,
     isHost,
@@ -295,5 +349,6 @@ export function useMultiplayerRoom(
     leaveRoom,
     broadcastState,
     broadcastMatch,
+    transferHost,
   };
 }

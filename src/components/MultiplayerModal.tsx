@@ -44,6 +44,7 @@ interface MultiplayerModalProps {
   members?: RoomMember[];
   myPlayerName?: string;
   onUpdatePlayerName?: (name: string) => void;
+  onTransferHost?: (targetMember: RoomMember) => Promise<void> | void;
 }
 
 export function MultiplayerModal({
@@ -58,6 +59,7 @@ export function MultiplayerModal({
   members = [],
   myPlayerName = 'Player',
   onUpdatePlayerName,
+  onTransferHost,
 }: MultiplayerModalProps) {
   const [inputCode, setInputCode] = useState<string>('');
   const [customHostCode, setCustomHostCode] = useState<string>('');
@@ -67,6 +69,22 @@ export function MultiplayerModal({
   const [clipboardDetectedRoom, setClipboardDetectedRoom] = useState<string | null>(null);
   const [isEditingName, setIsEditingName] = useState<boolean>(false);
   const [tempName, setTempName] = useState<string>(myPlayerName);
+  const [confirmTransferTarget, setConfirmTransferTarget] = useState<RoomMember | null>(null);
+  const [isTransferring, setIsTransferring] = useState<boolean>(false);
+
+  const handleConfirmTransfer = async (member: RoomMember) => {
+    if (!onTransferHost) return;
+    setIsTransferring(true);
+    try {
+      await onTransferHost(member);
+      setConfirmTransferTarget(null);
+    } catch {
+      // ignore
+    } finally {
+      setIsTransferring(false);
+    }
+  };
+
 
   useEffect(() => {
     if (myPlayerName) setTempName(myPlayerName);
@@ -430,10 +448,47 @@ export function MultiplayerModal({
                             </div>
                           </div>
 
-                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                            ออนไลน์
-                          </span>
+                          <div className="flex items-center gap-2">
+                            {/* Transfer Host Action for Host */}
+                            {isHost && !member.isSelf && !member.isHost && onTransferHost && (
+                              confirmTransferTarget?.id === member.id ? (
+                                <div className="flex items-center gap-1 animate-in fade-in duration-150">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleConfirmTransfer(member)}
+                                    disabled={isTransferring}
+                                    className="px-2 py-1 bg-amber-500 hover:bg-amber-400 text-black text-[10px] font-black rounded shadow transition active:scale-95 flex items-center gap-1"
+                                  >
+                                    <Crown className="w-2.5 h-2.5" />
+                                    <span>{isTransferring ? 'กำลังโอน...' : 'ยืนยัน'}</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmTransferTarget(null)}
+                                    disabled={isTransferring}
+                                    className="px-1.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] rounded transition"
+                                  >
+                                    ยกเลิก
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmTransferTarget(member)}
+                                  title={`โอนสิทธิ์หัวห้องให้ ${member.playerName}`}
+                                  className="px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[10px] font-bold flex items-center gap-1 transition active:scale-95"
+                                >
+                                  <Crown className="w-3 h-3 text-amber-400" />
+                                  <span>มอบสิทธิ์โฮสต์</span>
+                                </button>
+                              )
+                            )}
+
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                              ออนไลน์
+                            </span>
+                          </div>
                         </div>
                       ))}
 

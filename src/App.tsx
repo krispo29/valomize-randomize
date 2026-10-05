@@ -18,7 +18,7 @@ import { usePlayerProfiles } from '@/hooks/usePlayerProfiles';
 import { useMultiplayerRoom } from '@/hooks/useMultiplayerRoom';
 import { type RoomState } from '@/types/multiplayer';
 import { type MatchRecord } from '@/types/stats';
-import { saveMatchToDatabase, sanitizeRoomCode } from '@/services/supabaseService';
+import { saveMatchToDatabase, sanitizeRoomCode, getPlayerSessionId } from '@/services/supabaseService';
 import { VictoryScreen } from '@/components/VictoryScreen';
 import { StatsDashboard } from '@/components/StatsDashboard';
 import { RecordMatchModal } from '@/components/RecordMatchModal';
@@ -125,6 +125,7 @@ function App() {
     leaveRoom,
     broadcastState,
     broadcastMatch,
+    transferHost,
   } = useMultiplayerRoom(
     handleRemoteState,
     (incomingMatch) => {
@@ -133,6 +134,17 @@ function App() {
     (newMember) => {
       setMemberToast(`👋 ${newMember.playerName} เข้าร่วมห้องแล้ว!`);
       setTimeout(() => setMemberToast(null), 4000);
+    },
+    (transferPayload) => {
+      const myId = `${sanitizeRoomCode(roomCode || '')}_${getPlayerSessionId()}`;
+      if (transferPayload.newHostId === myId) {
+        setToastMessage(`👑 คุณได้รับสิทธิ์หัวห้องจาก ${transferPayload.previousHostName} แล้ว! ตอนนี้คุณสามารถกดสุ่มตัวละครได้`);
+        playVictory();
+      } else {
+        setToastMessage(`👑 ${transferPayload.previousHostName} โอนสิทธิ์หัวห้องให้ ${transferPayload.newHostName} แล้ว`);
+        playClick();
+      }
+      setTimeout(() => setToastMessage(null), 4500);
     }
   );
 
@@ -1588,6 +1600,17 @@ function App() {
           members={roomMembers}
           myPlayerName={myPlayerName}
           onUpdatePlayerName={setMyPlayerName}
+          onTransferHost={async (targetMember) => {
+            const res = await transferHost(targetMember);
+            if (res.success) {
+              setToastMessage(`👑 โอนสิทธิ์หัวห้องให้ ${targetMember.playerName} เรียบร้อยแล้ว`);
+              playClick();
+              setTimeout(() => setToastMessage(null), 3500);
+            } else {
+              setToastMessage(`❌ เกิดข้อผิดพลาด: ${res.error || 'โอนสิทธิ์ไม่สำเร็จ'}`);
+              setTimeout(() => setToastMessage(null), 3500);
+            }
+          }}
         />
 
         {/* Live Member Join Floating Toast */}

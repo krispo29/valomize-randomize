@@ -196,6 +196,74 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  res.setHeader('Allow', ['GET', 'POST', 'DELETE', 'OPTIONS']);
+  // 4. PATCH: Transfer host privileges to another member
+  if (req.method === 'PATCH') {
+    try {
+      const body = typeof req.body === 'string' && req.body ? JSON.parse(req.body) : req.body || {};
+      const roomCode = body?.room_code ? String(body.room_code).trim().toUpperCase() : null;
+      const targetMemberId = body?.target_member_id ? String(body.target_member_id).trim() : null;
+      const currentHostSessionId = body?.current_host_session_id ? String(body.current_host_session_id).trim() : null;
+
+      if (!roomCode || !targetMemberId) {
+        res.status(400).json({ success: false, error: 'room_code and target_member_id are required' });
+        return;
+      }
+
+      // Check current host authorization if provided
+      if (currentHostSessionId) {
+        const currentMemberId = `${roomCode}_${currentHostSessionId}`;
+        const hostCheck = await sql`
+          SELECT is_host FROM room_members 
+          WHERE UPPER(room_code) = ${roomCode} AND id = ${currentMemberId}
+        `;
+        if (!hostCheck || hostCheck.length === 0 || !hostCheck[0].is_host) {
+          res.status(403).json({ success: false, error: 'Only current host can transfer host privileges' });
+          return;
+        }
+      }
+
+      // 1. Demote all existing hosts in this room
+      await sql`UPDATE room_members SET is_host = FALSE WHERE UPPER(room_code) = ${roomCode}`;
+
+      // 2. Promote target member
+      await sql`UPDATE room_members SET is_host = TRUE, last_seen = NOW() WHERE UPPER(room_code) = ${roomCode} AND id = ${targetMemberId}`;
+
+      // 3. Return updated active members
+      const rows = await sql`
+        SELECT 
+          id, 
+          room_code, 
+          player_name, 
+          is_host, 
+          slot_index, 
+          EXTRACT(EPOCH FROM last_seen) * 1000 AS last_seen
+        FROM room_members
+        WHERE UPPER(room_code) = ${roomCode}
+          AND last_seen > NOW() - INTERVAL '25 seconds'
+        ORDER BY is_host DESC, created_at ASC
+      `;
+
+      const members = (rows || []).map((r: any) => ({
+        id: r.id,
+        playerName: r.player_name,
+        isHost: Boolean(r.is_host),
+        slotIndex: r.slot_index !== null ? Number(r.slot_index) : null,
+        lastSeen: Number(r.last_seen),
+      }));
+
+      res.status(200).json({
+        success: true,
+        message: 'Host privileges transferred successfully',
+        roomCode,
+        members,
+      });
+    } catch (err: any) {
+      console.error('Error transferring host in Neon:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+    return;
+  }
+
+  res.setHeader('Allow', ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS']);
   res.status(405).json({ success: false, error: `Method ${req.method} Not Allowed` });
 }

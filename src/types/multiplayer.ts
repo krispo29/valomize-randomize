@@ -31,8 +31,14 @@ export interface RoomMember {
   isSelf?: boolean;
 }
 
+export interface HostTransferredPayload {
+  newHostId: string;
+  newHostName: string;
+  previousHostName: string;
+}
+
 export interface MultiplayerSyncMessage {
-  type: 'STATE_SYNC' | 'ROLL_TRIGGER' | 'MATCH_RECORDED' | 'ROOM_PING' | 'MEMBER_JOIN' | 'MEMBER_LEAVE';
+  type: 'STATE_SYNC' | 'ROLL_TRIGGER' | 'MATCH_RECORDED' | 'ROOM_PING' | 'MEMBER_JOIN' | 'MEMBER_LEAVE' | 'HOST_TRANSFERRED';
   roomCode: string;
   sender: string;
   timestamp: number;

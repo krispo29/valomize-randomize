@@ -151,6 +151,63 @@ export async function leaveRoomPresence(roomCode: string, sessionId: string): Pr
   }
 }
 
+export async function transferRoomHost(
+  roomCode: string,
+  targetMemberId: string,
+  currentHostSessionId?: string
+): Promise<{ success: boolean; members?: RoomMember[]; error?: string }> {
+  const cleanCode = sanitizeRoomCode(roomCode);
+  if (!cleanCode || !targetMemberId) return { success: false, error: 'ข้อมูลไม่ครบถ้วน' };
+
+  try {
+    const res = await fetch('/api/rooms', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        room_code: cleanCode,
+        target_member_id: targetMemberId,
+        current_host_session_id: currentHostSessionId,
+      }),
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      const sessionId = getPlayerSessionId();
+      const mappedMembers = Array.isArray(data.members)
+        ? data.members.map((m: any) => ({
+            ...m,
+            isSelf: m.id === `${cleanCode}_${sessionId}`,
+          }))
+        : [];
+      return { success: true, members: mappedMembers };
+    }
+    return { success: false, error: data.error || 'Failed to transfer host' };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function broadcastHostTransfer(
+  roomCode: string,
+  newHostId: string,
+  newHostName: string,
+  previousHostName: string
+): Promise<void> {
+  const cleanCode = sanitizeRoomCode(roomCode);
+  const msg: MultiplayerSyncMessage = {
+    type: 'HOST_TRANSFERRED',
+    roomCode: cleanCode,
+    sender: previousHostName,
+    timestamp: Date.now(),
+    payload: {
+      newHostId,
+      newHostName,
+      previousHostName,
+    },
+  };
+  await broadcastRoomMessage(cleanCode, msg);
+}
+
 export interface SupabaseConfig {
   url: string;
   anonKey: string;
