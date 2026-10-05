@@ -36,8 +36,8 @@ export interface ValorantApiMap {
   assetPath: string;
 }
 
-const AGENTS_CACHE_KEY = 'valomize_agents_cache_v2';
-const MAPS_CACHE_KEY = 'valomize_maps_cache_v2';
+const AGENTS_CACHE_KEY = 'valomize_agents_cache_v3';
+const MAPS_CACHE_KEY = 'valomize_maps_cache_v3';
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 24 hours
 
 interface CachePayload<T> {

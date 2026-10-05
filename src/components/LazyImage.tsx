@@ -9,6 +9,7 @@ interface LazyImageProps {
 
 export const LazyImage = ({ src, alt, className, placeholder }: LazyImageProps) => {
   const [isLoaded, setIsLoaded] = useState(false);
+  const [hasError, setHasError] = useState(false);
   const [isInView, setIsInView] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
 
@@ -32,7 +33,7 @@ export const LazyImage = ({ src, alt, className, placeholder }: LazyImageProps) 
 
   return (
     <div ref={imgRef} className={className}>
-      {isInView && (
+      {isInView && !hasError && (
         <img
           src={src}
           alt={alt}
@@ -40,12 +41,13 @@ export const LazyImage = ({ src, alt, className, placeholder }: LazyImageProps) 
             isLoaded ? 'opacity-100' : 'opacity-0'
           } ${className}`}
           onLoad={() => setIsLoaded(true)}
+          onError={() => setHasError(true)}
           loading="lazy"
         />
       )}
-      {!isLoaded && placeholder && (
-        <div className={`${className} bg-gray-200 animate-pulse flex items-center justify-center`}>
-          <span className="text-gray-400 text-sm">{placeholder}</span>
+      {(!isLoaded || hasError) && (
+        <div className={`${className} bg-zinc-800/60 border border-zinc-700/50 rounded flex items-center justify-center p-2 text-center`}>
+          <span className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">{placeholder || alt}</span>
         </div>
       )}
     </div>
