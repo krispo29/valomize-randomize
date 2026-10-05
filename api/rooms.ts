@@ -27,9 +27,66 @@ async function ensureRoomMembersTable(sql: any) {
     `;
     await sql`CREATE INDEX IF NOT EXISTS idx_room_members_code ON room_members (room_code);`;
     await sql`CREATE INDEX IF NOT EXISTS idx_room_members_seen ON room_members (last_seen DESC);`;
+    await sql`
+      CREATE TABLE IF NOT EXISTS room_states (
+        room_code TEXT PRIMARY KEY,
+        state_data JSONB NOT NULL,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `;
+    // Backward compatibility for existing tables
+    try {
+      await sql`ALTER TABLE room_members ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();`;
+      await sql`ALTER TABLE room_members ADD COLUMN IF NOT EXISTS slot_index INTEGER;`;
+    } catch {
+      // ignore if alter is unsupported or already exists
+    }
     tableInitialized = true;
   } catch (err) {
     console.warn('Could not auto-create room_members table:', err);
+  }
+}
+
+
+async function checkAndMigrateHost(sql: any, roomCode: string) {
+  try {
+    const activeHost = await sql`
+      SELECT id FROM room_members 
+      WHERE UPPER(room_code) = ${roomCode} 
+        AND is_host = TRUE 
+        AND last_seen > NOW() - INTERVAL '25 seconds'
+      LIMIT 1;
+    `;
+
+    if (!activeHost || activeHost.length === 0) {
+      const candidates = await sql`
+        SELECT id, player_name FROM room_members 
+        WHERE UPPER(room_code) = ${roomCode} 
+          AND last_seen > NOW() - INTERVAL '25 seconds'
+        ORDER BY created_at ASC 
+        LIMIT 1;
+      `;
+      if (candidates && candidates.length > 0) {
+        const newHostId = candidates[0].id;
+        await sql`UPDATE room_members SET is_host = FALSE WHERE UPPER(room_code) = ${roomCode}`;
+        await sql`UPDATE room_members SET is_host = TRUE, last_seen = NOW() WHERE id = ${newHostId}`;
+        return { migrated: true, newHostId, newHostName: candidates[0].player_name };
+      }
+    }
+  } catch (err) {
+    console.warn('Host migration check error:', err);
+  }
+  return { migrated: false };
+}
+
+async function getRoomState(sql: any, roomCode: string) {
+  try {
+    const rows = await sql`
+      SELECT state_data FROM room_states WHERE UPPER(room_code) = ${roomCode} LIMIT 1;
+    `;
+    return rows?.[0]?.state_data || null;
+  } catch {
+    return null;
   }
 }
 
@@ -71,6 +128,9 @@ export default async function handler(req: any, res: any) {
         // ignore
       }
 
+      // Check and migrate host if active host is missing
+      await checkAndMigrateHost(sql, roomCode);
+
       // Active members seen within last 25 seconds
       const rows = await sql`
         SELECT 
@@ -94,11 +154,14 @@ export default async function handler(req: any, res: any) {
         lastSeen: Number(r.last_seen),
       }));
 
+      const roomState = await getRoomState(sql, roomCode);
+
       res.status(200).json({
         success: true,
         roomCode,
         count: members.length,
         members,
+        roomState,
       });
     } catch (err: any) {
       console.error('Error fetching room members from Neon:', err);
@@ -153,6 +216,9 @@ export default async function handler(req: any, res: any) {
           last_seen = NOW();
       `;
 
+      // Check and migrate host if active host is missing
+      await checkAndMigrateHost(sql, roomCode);
+
       // Return current active members immediately to avoid extra roundtrip
       const rows = await sql`
         SELECT 
@@ -176,11 +242,14 @@ export default async function handler(req: any, res: any) {
         lastSeen: Number(r.last_seen),
       }));
 
+      const roomState = await getRoomState(sql, roomCode);
+
       res.status(200).json({
         success: true,
         roomCode,
         count: members.length,
         members,
+        roomState,
       });
     } catch (err: any) {
       console.error('Error updating room presence in Neon:', err);
@@ -277,6 +346,37 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  res.setHeader('Allow', ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS']);
+  // 5. PUT: Save/Update Room State
+  if (req.method === 'PUT') {
+    try {
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
+      const roomCode = body?.room_code ? String(body.room_code).trim().toUpperCase() : null;
+      const roomState = body?.room_state;
+
+      if (!roomCode || !roomState) {
+        res.status(400).json({ success: false, error: 'room_code and room_state are required' });
+        return;
+      }
+
+      await sql`
+        INSERT INTO room_states (
+          room_code, state_data, updated_at
+        ) VALUES (
+          ${roomCode}, ${JSON.stringify(roomState)}, NOW()
+        )
+        ON CONFLICT (room_code) DO UPDATE SET
+          state_data = EXCLUDED.state_data,
+          updated_at = NOW();
+      `;
+
+      res.status(200).json({ success: true, message: 'Room state saved' });
+    } catch (err: any) {
+      console.error('Error saving room state in Neon:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+    return;
+  }
+
+  res.setHeader('Allow', ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']);
   res.status(405).json({ success: false, error: `Method ${req.method} Not Allowed` });
 }

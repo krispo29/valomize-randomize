@@ -17,6 +17,7 @@ import {
   transferRoomHost,
   broadcastHostTransfer,
   fetchRoomMembers,
+  saveRoomStateToDatabase,
 } from '@/services/supabaseService';
 
 export function useMultiplayerRoom(
@@ -93,9 +94,9 @@ export function useMultiplayerRoom(
             removeRoomHost(msg.roomCode);
           }
 
-          fetchRoomMembers(msg.roomCode, sessionIdRef.current).then((updated) => {
-            if (Array.isArray(updated) && updated.length > 0) {
-              setMembers(updated);
+          fetchRoomMembers(msg.roomCode, sessionIdRef.current).then((res) => {
+            if (res && Array.isArray(res.members) && res.members.length > 0) {
+              setMembers(res.members);
             }
           });
         }
@@ -194,7 +195,7 @@ export function useMultiplayerRoom(
 
     const doHeartbeat = async () => {
       try {
-        const activeList = await sendRoomHeartbeat({
+        const res = await sendRoomHeartbeat({
           roomCode,
           playerName: myPlayerName,
           sessionId: sessionIdRef.current,
@@ -204,16 +205,33 @@ export function useMultiplayerRoom(
 
         if (!isMounted) return;
 
+        const activeList = res.members;
+
         if (Array.isArray(activeList)) {
           // Detect if backend confirms we are host
           const self = activeList.find((m) => m.isSelf);
           if (self) {
             if (self.isHost && !isHost) {
+              // Auto-migrated to host!
               setIsHost(true);
               saveRoomHost(roomCode, true);
+              onHostTransferred?.({
+                newHostId: self.id,
+                newHostName: myPlayerName,
+                previousHostName: 'หัวห้องเดิม (ขาดการเชื่อมต่อ)',
+              });
+              broadcastHostTransfer(roomCode, self.id, myPlayerName, 'หัวห้องเดิม');
             } else if (!self.isHost && isHost) {
               setIsHost(false);
               removeRoomHost(roomCode);
+            }
+          }
+
+          // Late joiner state sync: apply if roomState exists and client hasn't loaded state yet
+          if (res.roomState) {
+            if (!lastSyncedAt || (res.roomState.lastUpdated && res.roomState.lastUpdated > lastSyncedAt)) {
+              onRemoteStateReceived?.(res.roomState);
+              setLastSyncedAt(res.roomState.lastUpdated || Date.now());
             }
           }
 
@@ -290,7 +308,10 @@ export function useMultiplayerRoom(
       } catch {
         // ignore
       }
+      // Broadcast via Realtime WebSocket
       await broadcastStateSync(roomCode, 'host', state);
+      // Persist to Neon Postgres so late joiners see it
+      saveRoomStateToDatabase(roomCode, state).catch(() => {});
       setLastSyncedAt(Date.now());
     },
     [roomCode, isHost]

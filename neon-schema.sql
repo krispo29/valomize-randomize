@@ -36,6 +36,16 @@ CREATE TABLE IF NOT EXISTS room_members (
 CREATE INDEX IF NOT EXISTS idx_room_members_code ON room_members (room_code);
 CREATE INDEX IF NOT EXISTS idx_room_members_seen ON room_members (last_seen DESC);
 
+-- -----------------------------------------------------
+-- Room Persisted State (For Late Joiners)
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS room_states (
+  room_code TEXT PRIMARY KEY,
+  state_data JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Sample query to check records:
 -- SELECT * FROM matches ORDER BY created_at DESC LIMIT 10;
 -- SELECT * FROM room_members WHERE last_seen > NOW() - INTERVAL '30 seconds';
+-- SELECT * FROM room_states;
