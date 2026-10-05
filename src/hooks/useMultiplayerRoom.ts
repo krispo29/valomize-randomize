@@ -11,6 +11,9 @@ import {
   getPlayerSessionId,
   getSavedDisplayName,
   setSavedDisplayName,
+  isRoomHostStored,
+  saveRoomHost,
+  removeRoomHost,
 } from '@/services/supabaseService';
 
 export function useMultiplayerRoom(
@@ -19,7 +22,18 @@ export function useMultiplayerRoom(
   onMemberJoined?: (member: RoomMember) => void
 ) {
   const [roomCode, setRoomCode] = useState<string | null>(null);
-  const [isHost, setIsHost] = useState<boolean>(false);
+  const [isHost, setIsHost] = useState<boolean>(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlRoom = urlParams.get('room');
+      if (urlRoom) {
+        return isRoomHostStored(urlRoom);
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  });
   const [connectionStatus, setConnectionStatus] = useState<
     'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'ERROR'
   >('DISCONNECTED');
@@ -75,7 +89,8 @@ export function useMultiplayerRoom(
       if (urlRoom) {
         const clean = sanitizeRoomCode(urlRoom);
         if (clean && !roomCode) {
-          joinRoom(clean, false);
+          const wasHost = isRoomHostStored(clean);
+          joinRoom(clean, wasHost);
         }
       }
     } catch {
@@ -95,6 +110,7 @@ export function useMultiplayerRoom(
 
       setRoomCode(cleanCode);
       setIsHost(asHost);
+      saveRoomHost(cleanCode, asHost);
       setConnectionStatus('CONNECTED');
 
       // Update URL query param without reload
@@ -166,6 +182,15 @@ export function useMultiplayerRoom(
         if (!isMounted) return;
 
         if (Array.isArray(activeList)) {
+          // Detect if backend confirms we are host
+          const self = activeList.find((m) => m.isSelf);
+          if (self) {
+            if (self.isHost && !isHost) {
+              setIsHost(true);
+              saveRoomHost(roomCode, true);
+            }
+          }
+
           // Detect newly joined members
           activeList.forEach((m) => {
             if (!m.isSelf && !prevMemberIdsRef.current.has(m.id)) {
@@ -207,6 +232,12 @@ export function useMultiplayerRoom(
       subscriptionRef.current = null;
     }
     if (roomCode) {
+      removeRoomHost(roomCode);
+      try {
+        sessionStorage.removeItem(`valomize_room_cache_${roomCode}`);
+      } catch {
+        // ignore
+      }
       leaveRoomPresence(roomCode, sessionIdRef.current);
     }
     setRoomCode(null);
@@ -228,6 +259,11 @@ export function useMultiplayerRoom(
   const broadcastState = useCallback(
     async (state: RoomState) => {
       if (!roomCode || !isHost) return;
+      try {
+        sessionStorage.setItem(`valomize_room_cache_${roomCode}`, JSON.stringify(state));
+      } catch {
+        // ignore
+      }
       await broadcastStateSync(roomCode, 'host', state);
       setLastSyncedAt(Date.now());
     },

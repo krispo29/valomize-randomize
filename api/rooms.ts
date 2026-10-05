@@ -132,7 +132,10 @@ export default async function handler(req: any, res: any) {
         )
         ON CONFLICT (id) DO UPDATE SET
           player_name = EXCLUDED.player_name,
-          is_host = EXCLUDED.is_host,
+          is_host = CASE 
+            WHEN room_members.is_host = TRUE THEN TRUE 
+            ELSE EXCLUDED.is_host 
+          END,
           slot_index = COALESCE(EXCLUDED.slot_index, room_members.slot_index),
           last_seen = NOW();
       `;

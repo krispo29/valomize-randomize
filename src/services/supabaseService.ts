@@ -5,6 +5,45 @@ import { type MatchRecord } from '@/types/stats';
 const SUPABASE_CONFIG_KEY = 'valomize_supabase_config_v1';
 const SESSION_ID_KEY = 'valomize_player_session_id';
 const DISPLAY_NAME_KEY = 'valomize_player_display_name';
+const HOST_ROOMS_KEY = 'valomize_host_rooms_v1';
+
+export function isRoomHostStored(roomCode: string): boolean {
+  if (!roomCode) return false;
+  const clean = sanitizeRoomCode(roomCode);
+  try {
+    const raw = localStorage.getItem(HOST_ROOMS_KEY);
+    if (!raw) return false;
+    const hosted: string[] = JSON.parse(raw);
+    return Array.isArray(hosted) && hosted.includes(clean);
+  } catch {
+    return false;
+  }
+}
+
+export function saveRoomHost(roomCode: string, isHost: boolean): void {
+  if (!roomCode) return;
+  const clean = sanitizeRoomCode(roomCode);
+  try {
+    const raw = localStorage.getItem(HOST_ROOMS_KEY);
+    let hosted: string[] = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(hosted)) hosted = [];
+    if (isHost) {
+      if (!hosted.includes(clean)) {
+        hosted.push(clean);
+      }
+    } else {
+      hosted = hosted.filter((c) => c !== clean);
+    }
+    localStorage.setItem(HOST_ROOMS_KEY, JSON.stringify(hosted));
+  } catch {
+    // ignore
+  }
+}
+
+export function removeRoomHost(roomCode: string): void {
+  saveRoomHost(roomCode, false);
+}
+
 
 export function getPlayerSessionId(): string {
   try {

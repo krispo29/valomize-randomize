@@ -18,7 +18,7 @@ import { usePlayerProfiles } from '@/hooks/usePlayerProfiles';
 import { useMultiplayerRoom } from '@/hooks/useMultiplayerRoom';
 import { type RoomState } from '@/types/multiplayer';
 import { type MatchRecord } from '@/types/stats';
-import { saveMatchToDatabase } from '@/services/supabaseService';
+import { saveMatchToDatabase, sanitizeRoomCode } from '@/services/supabaseService';
 import { VictoryScreen } from '@/components/VictoryScreen';
 import { StatsDashboard } from '@/components/StatsDashboard';
 import { RecordMatchModal } from '@/components/RecordMatchModal';
@@ -102,6 +102,11 @@ function App() {
     if (state.showVictory !== undefined) {
       setShowVictory(state.showVictory);
     }
+    if (state.roomCode) {
+      try {
+        sessionStorage.setItem(`valomize_room_cache_${state.roomCode}`, JSON.stringify(state));
+      } catch {}
+    }
   };
 
   const [memberToast, setMemberToast] = useState<string | null>(null);
@@ -131,7 +136,28 @@ function App() {
     }
   );
 
-  // Authority Check: Guest is someone inside a room who is NOT the host
+
+  // Restore cached room state on reload (F5) if room query parameter exists
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlRoom = urlParams.get('room');
+      if (urlRoom) {
+        const clean = sanitizeRoomCode(urlRoom);
+        const cachedRaw = sessionStorage.getItem(`valomize_room_cache_${clean}`);
+        if (cachedRaw) {
+          const cached = JSON.parse(cachedRaw) as RoomState;
+          if (cached) {
+            handleRemoteState(cached);
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+    // Authority Check: Guest is someone inside a room who is NOT the host
   const isGuest = Boolean(isInRoom && !isHost);
 
   // Initial Role Counts (All 0 = Random)
@@ -1558,7 +1584,7 @@ function App() {
           connectionStatus={roomConnectionStatus}
           onCreateRoom={createRoom}
           onJoinRoom={joinRoom}
-          onLeaveRoom={leaveRoom}
+          onLeaveRoom={() => { if (roomCode) { try { sessionStorage.removeItem(`valomize_room_cache_${roomCode}`); } catch {} } leaveRoom(); }}
           members={roomMembers}
           myPlayerName={myPlayerName}
           onUpdatePlayerName={setMyPlayerName}
