@@ -34,6 +34,7 @@ async function ensureRoomMembersTable(sql: any) {
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
     `;
+    await sql`CREATE INDEX IF NOT EXISTS idx_room_states_updated ON room_states (updated_at DESC);`;
     // Backward compatibility for existing tables
     try {
       await sql`ALTER TABLE room_members ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();`;
@@ -90,6 +91,31 @@ async function getRoomState(sql: any, roomCode: string) {
   }
 }
 
+let lastCleanupTime = 0;
+const CLEANUP_THROTTLE_MS = 5 * 60 * 1000; // Throttle to max once every 5 minutes per serverless container
+
+async function purgeExpiredRooms(sql: any, force: boolean = false) {
+  const now = Date.now();
+  if (!force && now - lastCleanupTime < CLEANUP_THROTTLE_MS) return;
+  lastCleanupTime = now;
+
+  try {
+    // 1. Delete room states that have not been updated in over 24 hours
+    await sql`
+      DELETE FROM room_states 
+      WHERE updated_at < NOW() - INTERVAL '24 hours';
+    `;
+
+    // 2. Delete abandoned member presence records older than 24 hours
+    await sql`
+      DELETE FROM room_members 
+      WHERE last_seen < NOW() - INTERVAL '24 hours';
+    `;
+  } catch (err) {
+    console.warn('Auto-purge expired rooms warning:', err);
+  }
+}
+
 export default async function handler(req: any, res: any) {
   setCorsHeaders(res);
 
@@ -110,6 +136,14 @@ export default async function handler(req: any, res: any) {
 
   const sql = neon(databaseUrl);
   await ensureRoomMembersTable(sql);
+
+  // Auto-Purge: Clean up rooms and member records inactive for > 24 hours
+  await purgeExpiredRooms(sql, req.query?.action === 'cleanup');
+
+  if (req.query?.action === 'cleanup') {
+    res.status(200).json({ success: true, message: 'Purged rooms inactive for > 24 hours' });
+    return;
+  }
 
   // 1. GET: Fetch active members in room
   if (req.method === 'GET') {
