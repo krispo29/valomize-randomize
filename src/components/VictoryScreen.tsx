@@ -14,7 +14,7 @@ interface VictoryScreenProps {
   readonly playerStatuses: Record<number, 'MVP' | 'BOTTOM' | null>;
   readonly shuffledOrder?: number[];
   readonly mapName?: string;
-  readonly onPlayAgain: () => void;
+  readonly onPlayAgain?: () => void;
   readonly onClose: () => void;
   readonly onRecordMatch?: () => void;
   readonly onShareCard?: () => void;
@@ -399,13 +399,15 @@ export function VictoryScreen({
                   </>
                 )}
               </Button>
-              <Button
-                onClick={onPlayAgain}
-                className="bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-3 flex items-center gap-2 shadow-lg shadow-red-500/30"
-              >
-                <RefreshCw className="h-5 w-5" />
-                Roll Again
-              </Button>
+              {onPlayAgain && (
+                <Button
+                  onClick={onPlayAgain}
+                  className="bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-3 flex items-center gap-2 shadow-lg shadow-red-500/30"
+                >
+                  <RefreshCw className="h-5 w-5" />
+                  Roll Again
+                </Button>
+              )}
               <Button
                 variant="outline"
                 onClick={onClose}

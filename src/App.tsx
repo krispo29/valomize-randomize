@@ -7,7 +7,7 @@ import { DEFAULT_FRIENDS, type Agent, type Role, type ValorantMap, MAP_META, MAP
 import { valorantMeta2026, type AgentStrategyProfile } from '@/data/meta';
 import { 
   Shuffle, UserCog, Settings2, Map as MapIcon, Volume2, VolumeX, 
-  BarChart3, Trophy, Globe, Zap, Ban, Keyboard, Tv, Copy, Swords, Dices 
+  BarChart3, Trophy, Globe, Zap, Ban, Keyboard, Tv, Copy, Swords, Dices, Eye 
 } from 'lucide-react';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
@@ -128,6 +128,9 @@ function App() {
     }
   );
 
+  // Authority Check: Guest is someone inside a room who is NOT the host
+  const isGuest = Boolean(isInRoom && !isHost);
+
   // Initial Role Counts (All 0 = Random)
   const [rolesCount, setRolesCount] = useState<Record<Role, number>>({
     'Duelist': 0,
@@ -156,6 +159,19 @@ function App() {
 
   const blacklistedSet = useMemo(() => new Set(blacklistedAgents), [blacklistedAgents]);
   const tacticalBrief = useMemo(() => generateTacticalBrief(assignmentsByIndex, selectedMap), [assignmentsByIndex, selectedMap]);
+
+  // Auto-close host-only modals & tools if the user is in a room as a guest
+  useEffect(() => {
+    if (isGuest) {
+      setEditMode(false);
+      setShowSettings(false);
+      setShowMapSelector(false);
+      setShowMapVetoModal(false);
+      setShowGunChallengeModal(false);
+      setShowBlacklistModal(false);
+      setShowProfilesModal(false);
+    }
+  }, [isGuest]);
 
   // Sound manager
   const { 
@@ -196,6 +212,7 @@ function App() {
 
   // Toggle agent pin/lock
   const handleTogglePin = (index: number) => {
+    if (isGuest) return;
     playClick();
     setPinnedIndices(prev => {
       const next = new Set(prev);
@@ -210,7 +227,7 @@ function App() {
 
   // Re-roll single player
   const handleRerollSingle = (playerIndex: number) => {
-    if (phase !== 'IDLE') return;
+    if (phase !== 'IDLE' || isGuest) return;
     playClick();
 
     const currentAgent = assignmentsByIndex[playerIndex];
@@ -285,7 +302,7 @@ function App() {
 
   // Swap assigned agents between two players
   const handleSwapAgents = (idxA: number, idxB: number) => {
-    if (idxA === idxB || phase !== 'IDLE') return;
+    if (idxA === idxB || phase !== 'IDLE' || isGuest) return;
     const agentA = assignmentsByIndex[idxA];
     const agentB = assignmentsByIndex[idxB];
     if (!agentA && !agentB) return;
@@ -553,7 +570,7 @@ function App() {
   };
 
   const handleRollSafe = async () => {
-    if (phase !== 'IDLE') return;
+    if (phase !== 'IDLE' || isGuest) return;
     
     // TURBO MODE: 0.1s instant roll, skips deal animation
     if (isTurbo) {
@@ -750,6 +767,7 @@ function App() {
   };
 
   const handleStatusChange = (index: number, newStatus: 'MVP' | 'BOTTOM' | null) => {
+    if (isGuest) return;
     if (newStatus) playLock();
     setPlayerStatuses(prev => {
       const next = { ...prev };
@@ -794,34 +812,42 @@ function App() {
         e.preventDefault();
         if (showVictory) {
           setShowVictory(false);
-        } else if (phase === 'IDLE') {
+        } else if (phase === 'IDLE' && !isGuest) {
           handleRollSafe();
         }
       } else if (e.key === 'r' || e.key === 'R') {
         e.preventDefault();
-        if (phase === 'IDLE') {
+        if (phase === 'IDLE' && !isGuest) {
           handleRollSafe();
         }
       } else if (e.key === 't' || e.key === 'T') {
         e.preventDefault();
-        setIsTurbo(prev => !prev);
-        playClick();
+        if (!isGuest) {
+          setIsTurbo(prev => !prev);
+          playClick();
+        }
       } else if (e.key === 'v' || e.key === 'V') {
         e.preventDefault();
-        setShowMapVetoModal(prev => !prev);
-        playClick();
+        if (!isGuest) {
+          setShowMapVetoModal(prev => !prev);
+          playClick();
+        }
       } else if (e.key === 'm' || e.key === 'M') {
         e.preventDefault();
-        setShowMapSelector(prev => !prev);
-        playClick();
+        if (!isGuest) {
+          setShowMapSelector(prev => !prev);
+          playClick();
+        }
       } else if (e.key === 's' || e.key === 'S') {
         e.preventDefault();
         setShowStatsDashboard(prev => !prev);
         playClick();
       } else if (e.key === 'b' || e.key === 'B') {
         e.preventDefault();
-        setShowBlacklistModal(prev => !prev);
-        playClick();
+        if (!isGuest) {
+          setShowBlacklistModal(prev => !prev);
+          playClick();
+        }
       } else if (e.key === 'c' || e.key === 'C') {
         e.preventDefault();
         if (Object.keys(assignmentsByIndex).length > 0) {
@@ -840,7 +866,7 @@ function App() {
     phase, showVictory, showStatsDashboard, showRecordMatch, showShareCardModal, 
     showProfilesModal, showMultiplayerModal, showBlacklistModal, showShortcutsModal,
     showMapVetoModal, showGunChallengeModal,
-    assignmentsByIndex, friends, selectedMap, isTurbo
+    assignmentsByIndex, friends, selectedMap, isTurbo, isGuest
   ]);
 
 
@@ -885,52 +911,65 @@ function App() {
               <span>{isStreamerMode ? 'Streamer HUD' : 'Normal HUD'}</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setIsTurbo(prev => !prev);
-                playClick();
-              }}
-              className={`px-2.5 py-1.5 rounded-lg border font-bold flex items-center gap-1.5 transition active:scale-95 ${
-                isTurbo
-                  ? 'bg-amber-950/80 border-amber-500 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.3)]'
-                  : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-white'
-              }`}
-              title="โหมดสุ่มด่วนใน 0.1 วินาที (ข้ามอนิเมชั่น) [Hotkey: T]"
-            >
-              <Zap className={`w-3.5 h-3.5 ${isTurbo ? 'fill-amber-400' : ''}`} />
-              <span>{isTurbo ? 'Turbo: ON (0.1s)' : 'Turbo: OFF'}</span>
-            </button>
+            {isGuest && (
+              <span className="px-2.5 py-1.5 rounded-lg border bg-cyan-950/50 border-cyan-500/40 text-cyan-300 font-bold flex items-center gap-1.5 shadow-[0_0_12px_rgba(6,182,212,0.2)]">
+                <Eye className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Spectator Mode</span>
+              </span>
+            )}
+
+            {!isGuest && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsTurbo(prev => !prev);
+                  playClick();
+                }}
+                className={`px-2.5 py-1.5 rounded-lg border font-bold flex items-center gap-1.5 transition active:scale-95 ${
+                  isTurbo
+                    ? 'bg-amber-950/80 border-amber-500 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.3)]'
+                    : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-white'
+                }`}
+                title="โหมดสุ่มด่วนใน 0.1 วินาที (ข้ามอนิเมชั่น) [Hotkey: T]"
+              >
+                <Zap className={`w-3.5 h-3.5 ${isTurbo ? 'fill-amber-400' : ''}`} />
+                <span>{isTurbo ? 'Turbo: ON (0.1s)' : 'Turbo: OFF'}</span>
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Map Veto Modal button */}
-            <button
-              type="button"
-              onClick={() => {
-                setShowMapVetoModal(true);
-                playClick();
-              }}
-              className="px-2.5 py-1.5 rounded-lg border bg-zinc-900/60 border-zinc-800 text-zinc-300 hover:text-white hover:border-red-500/50 font-bold flex items-center gap-1.5 transition active:scale-95"
-              title="ระบบโหวตแบนด่านแบบ VCT แข่งขัน (Map Veto Draft) [Hotkey: V]"
-            >
-              <Swords className="w-3.5 h-3.5 text-red-400" />
-              <span className="hidden sm:inline">Map Veto (V)</span>
-            </button>
+            {/* Map Veto Modal button - Host only */}
+            {!isGuest && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMapVetoModal(true);
+                  playClick();
+                }}
+                className="px-2.5 py-1.5 rounded-lg border bg-zinc-900/60 border-zinc-800 text-zinc-300 hover:text-white hover:border-red-500/50 font-bold flex items-center gap-1.5 transition active:scale-95"
+                title="ระบบโหวตแบนด่านแบบ VCT แข่งขัน (Map Veto Draft) [Hotkey: V]"
+              >
+                <Swords className="w-3.5 h-3.5 text-red-400" />
+                <span className="hidden sm:inline">Map Veto (V)</span>
+              </button>
+            )}
 
-            {/* Gun Challenge Modal button */}
-            <button
-              type="button"
-              onClick={() => {
-                setShowGunChallengeModal(true);
-                playClick();
-              }}
-              className="px-2.5 py-1.5 rounded-lg border bg-zinc-900/60 border-zinc-800 text-zinc-300 hover:text-white hover:border-amber-500/50 font-bold flex items-center gap-1.5 transition active:scale-95"
-              title="สุ่มชาเลนจ์ปืน & กติกาซ้อมแข่ง Eco / Weapon Roulette"
-            >
-              <Dices className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden sm:inline">Challenge</span>
-            </button>
+            {/* Gun Challenge Modal button - Host only */}
+            {!isGuest && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGunChallengeModal(true);
+                  playClick();
+                }}
+                className="px-2.5 py-1.5 rounded-lg border bg-zinc-900/60 border-zinc-800 text-zinc-300 hover:text-white hover:border-amber-500/50 font-bold flex items-center gap-1.5 transition active:scale-95"
+                title="สุ่มชาเลนจ์ปืน & กติกาซ้อมแข่ง Eco / Weapon Roulette"
+              >
+                <Dices className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden sm:inline">Challenge</span>
+              </button>
+            )}
 
             {/* Copy in-game chat string shortcut button */}
             {Object.keys(assignmentsByIndex).length > 0 && (
@@ -945,28 +984,30 @@ function App() {
               </button>
             )}
 
-            {/* Blacklist Modal button */}
-            <button
-              type="button"
-              onClick={() => {
-                setShowBlacklistModal(true);
-                playClick();
-              }}
-              className={`px-2.5 py-1.5 rounded-lg border font-bold flex items-center gap-1.5 transition active:scale-95 ${
-                blacklistedAgents.length > 0
-                  ? 'bg-red-950/60 border-red-500/60 text-red-300'
-                  : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-white'
-              }`}
-              title="ตัดตัวละครที่ยังไม่ปลดล็อค หรือแบนไม่ให้สุ่ม [Hotkey: B]"
-            >
-              <Ban className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Blacklist</span>
-              {blacklistedAgents.length > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black">
-                  -{blacklistedAgents.length}
-                </span>
-              )}
-            </button>
+            {/* Blacklist Modal button - Host only */}
+            {!isGuest && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBlacklistModal(true);
+                  playClick();
+                }}
+                className={`px-2.5 py-1.5 rounded-lg border font-bold flex items-center gap-1.5 transition active:scale-95 ${
+                  blacklistedAgents.length > 0
+                    ? 'bg-red-950/60 border-red-500/60 text-red-300'
+                    : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-white'
+                }`}
+                title="ตัดตัวละครที่ยังไม่ปลดล็อค หรือแบนไม่ให้สุ่ม [Hotkey: B]"
+              >
+                <Ban className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Blacklist</span>
+                {blacklistedAgents.length > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black">
+                    -{blacklistedAgents.length}
+                  </span>
+                )}
+              </button>
+            )}
 
             {/* Shortcuts Guide button */}
             <button
@@ -1058,7 +1099,7 @@ function App() {
         {phase === 'IDLE' && (
             <div className="mb-8">
                 {/* Collapsible Areas */}
-                {(showMapSelector || selectedMap) && (
+                {!isGuest && (showMapSelector || selectedMap) && (
                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mb-4">
                     <ErrorBoundary>
                     <Suspense fallback={<div className="text-zinc-400 text-center">Loading selector...</div>}>
@@ -1077,7 +1118,7 @@ function App() {
                 </motion.div>
                 )}
 
-                {showSettings && (
+                {!isGuest && showSettings && (
                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mb-4">
                     <ErrorBoundary>
                     <RoleSelector rolesCount={rolesCount} setRolesCount={setRolesCount} totalPlayers={friends.length} />
@@ -1114,41 +1155,55 @@ function App() {
                     </motion.div>
                 )}
 
-                {/* Party Presets Bar */}
-                <PartyPresetsBar
-                  activePresetId={activePartyPreset}
-                  onSelectPreset={(presetId) => {
-                    setActivePartyPreset(presetId);
-                    playClick();
-                  }}
-                  className="mb-4"
-                />
+                {/* Party Presets Bar - Host only */}
+                {!isGuest && (
+                  <PartyPresetsBar
+                    activePresetId={activePartyPreset}
+                    onSelectPreset={(presetId) => {
+                      setActivePartyPreset(presetId);
+                      playClick();
+                    }}
+                    className="mb-4"
+                  />
+                )}
 
                 {/* Buttons */}
                 <div className="flex flex-wrap justify-center gap-2 md:gap-4 items-center">
-                    <Button
-                        variant="outline"
-                        onClick={() => { setShowMapSelector(!showMapSelector); if (!showMapSelector) setShowSettings(false); }}
-                        className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${(showMapSelector || selectedMap) ? 'border-red-500 bg-zinc-700' : ''}`}
-                        title="Map Meta Selection (M)"
-                        aria-label={showMapSelector ? "Hide map selector" : "Show map selector"}
-                    >
-                        <MapIcon className={`h-6 w-6 ${selectedMap ? 'text-red-400' : ''}`} />
-                    </Button>
+                    {/* Map Selection button - Host only */}
+                    {!isGuest && (
+                      <Button
+                          variant="outline"
+                          onClick={() => { setShowMapSelector(!showMapSelector); if (!showMapSelector) setShowSettings(false); }}
+                          className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${(showMapSelector || selectedMap) ? 'border-red-500 bg-zinc-700' : ''}`}
+                          title="Map Meta Selection (M)"
+                          aria-label={showMapSelector ? "Hide map selector" : "Show map selector"}
+                      >
+                          <MapIcon className={`h-6 w-6 ${selectedMap ? 'text-red-400' : ''}`} />
+                      </Button>
+                    )}
 
-                    <Button 
-                        size="lg" 
-                        onClick={handleRollSafe} 
-                        className={`font-black uppercase tracking-widest px-6 py-6 md:px-10 md:py-8 text-lg md:text-xl rounded-sm transition-all transform hover:scale-105 active:scale-95 ${
-                          isTurbo 
-                            ? 'bg-gradient-to-r from-amber-600 to-red-600 hover:from-amber-500 hover:to-red-500 text-white shadow-[0_0_25px_rgba(245,158,11,0.6)]' 
-                            : 'bg-red-600 hover:bg-red-700 text-white shadow-[0_0_20px_rgba(220,38,38,0.5)]'
-                        }`}
-                        title="กดปุ่ม [Spacebar] หรือคลิกเพื่อสุ่มตัวละคร"
-                    >
-                        {isTurbo ? <Zap className="mr-2 h-6 w-6 fill-amber-400 animate-pulse" /> : <Shuffle className="mr-2 h-5 w-5 md:h-6 md:w-6" />}
-                        {isTurbo ? '⚡ TURBO ROLL (0.1s)' : 'RANDOMIZE AGENTS'}
-                    </Button>
+                    {/* Randomize Action: Host rolls, Guest watches */}
+                    {!isGuest ? (
+                      <Button 
+                          size="lg" 
+                          onClick={handleRollSafe} 
+                          className={`font-black uppercase tracking-widest px-6 py-6 md:px-10 md:py-8 text-lg md:text-xl rounded-sm transition-all transform hover:scale-105 active:scale-95 ${
+                            isTurbo 
+                              ? 'bg-gradient-to-r from-amber-600 to-red-600 hover:from-amber-500 hover:to-red-500 text-white shadow-[0_0_25px_rgba(245,158,11,0.6)]' 
+                              : 'bg-red-600 hover:bg-red-700 text-white shadow-[0_0_20px_rgba(220,38,38,0.5)]'
+                          }`}
+                          title="กดปุ่ม [Spacebar] หรือคลิกเพื่อสุ่มตัวละคร"
+                      >
+                          {isTurbo ? <Zap className="mr-2 h-6 w-6 fill-amber-400 animate-pulse" /> : <Shuffle className="mr-2 h-5 w-5 md:h-6 md:w-6" />}
+                          {isTurbo ? '⚡ TURBO ROLL (0.1s)' : 'RANDOMIZE AGENTS'}
+                      </Button>
+                    ) : (
+                      <div className="flex items-center gap-3 px-6 py-4 md:px-8 md:py-5 rounded-xl bg-cyan-950/60 border border-cyan-500/40 text-cyan-300 font-bold tracking-wide text-xs md:text-sm shadow-xl shadow-cyan-500/10 backdrop-blur-md">
+                        <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse shrink-0" />
+                        <Eye className="w-5 h-5 text-cyan-400 shrink-0" />
+                        <span>กำลังรับชมสดจากหัวห้อง — รอหัวห้องกดสุ่มตัวละคร</span>
+                      </div>
+                    )}
                     
                     <div className="flex gap-2 h-auto">
                         <Button
@@ -1160,35 +1215,44 @@ function App() {
                             {isMuted ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
                         </Button>
 
-                        <Button
-                            variant="outline"
-                            onClick={() => { setShowSettings(!showSettings); if (!showSettings) setShowMapSelector(false); }}
-                            disabled={!!selectedMap}
-                            className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${showSettings ? 'border-red-500 bg-zinc-700' : ''} ${selectedMap ? 'opacity-50' : ''}`}
-                            aria-label={showSettings ? "Hide settings" : "Show settings"}
-                        >
-                            <Settings2 className="h-6 w-6" />
-                        </Button>
+                        {/* Role configuration button - Host only */}
+                        {!isGuest && (
+                          <Button
+                              variant="outline"
+                              onClick={() => { setShowSettings(!showSettings); if (!showSettings) setShowMapSelector(false); }}
+                              disabled={!!selectedMap}
+                              className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${showSettings ? 'border-red-500 bg-zinc-700' : ''} ${selectedMap ? 'opacity-50' : ''}`}
+                              aria-label={showSettings ? "Hide settings" : "Show settings"}
+                          >
+                              <Settings2 className="h-6 w-6" />
+                          </Button>
+                        )}
 
-                        <Button
-                            variant="outline"
-                            onClick={() => setEditMode(!editMode)}
-                            className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${editMode ? 'border-red-500 bg-zinc-700' : ''}`}
-                            aria-label={editMode ? "Disable edit mode" : "Enable edit mode"}
-                        >
-                            <UserCog className="h-6 w-6" />
-                        </Button>
+                        {/* Edit Mode button - Host only */}
+                        {!isGuest && (
+                          <Button
+                              variant="outline"
+                              onClick={() => setEditMode(!editMode)}
+                              className={`border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 h-14 md:h-auto ${editMode ? 'border-red-500 bg-zinc-700' : ''}`}
+                              aria-label={editMode ? "Disable edit mode" : "Enable edit mode"}
+                          >
+                              <UserCog className="h-6 w-6" />
+                          </Button>
+                        )}
 
-                        <Button
-                            variant="outline"
-                            onClick={() => setShowProfilesModal(true)}
-                            className="border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 hover:border-yellow-500/50 h-14 md:h-auto flex items-center gap-1.5 px-3"
-                            title="ตั้งค่า Riot ID & ตราแรงค์ผู้เล่น"
-                            aria-label="Player Profiles and Ranks"
-                        >
-                            <Trophy className="h-5 w-5 text-yellow-400" />
-                            <span className="hidden sm:inline text-xs font-bold uppercase tracking-wider">Ranks</span>
-                        </Button>
+                        {/* Ranks modal button - Host only */}
+                        {!isGuest && (
+                          <Button
+                              variant="outline"
+                              onClick={() => setShowProfilesModal(true)}
+                              className="border-white/20 text-white bg-zinc-800 hover:bg-zinc-700 hover:border-yellow-500/50 h-14 md:h-auto flex items-center gap-1.5 px-3"
+                              title="ตั้งค่า Riot ID & ตราแรงค์ผู้เล่น"
+                              aria-label="Player Profiles and Ranks"
+                          >
+                              <Trophy className="h-5 w-5 text-yellow-400" />
+                              <span className="hidden sm:inline text-xs font-bold uppercase tracking-wider">Ranks</span>
+                          </Button>
+                        )}
 
                         <Button
                             variant="outline"
@@ -1346,21 +1410,21 @@ function App() {
                                         playerName={friendName}
                                         agent={assignedAgent || null}
                                         rolling={isFaceDown} 
-                                        canEdit={editMode}
-                                        onEditName={(n) => {
+                                        canEdit={!isGuest && editMode}
+                                        onEditName={!isGuest ? (n) => {
                                             const newF = [...friends];
                                             newF[index] = n;
                                             setFriends(newF);
-                                        }}
+                                        } : undefined}
                                         status={playerStatuses[index] || null}
-                                        onStatusChange={(s) => handleStatusChange(index, s)}
+                                        onStatusChange={!isGuest ? (s) => handleStatusChange(index, s) : () => {}}
                                         mvpRole={mvpRoleChoices[index] || null}
-                                        onMvpRoleChange={(r) => setMvpRoleChoices(prev => ({ ...prev, [index]: r }))}
-                                        onClearName={() => {
+                                        onMvpRoleChange={!isGuest ? (r) => setMvpRoleChoices(prev => ({ ...prev, [index]: r })) : () => {}}
+                                        onClearName={!isGuest ? () => {
                                             const newF = [...friends];
                                             newF[index] = '';
                                             setFriends(newF);
-                                        }}
+                                        } : undefined}
                                         strategyProfile={strategyProfile}
                                         activeSynergies={
                                             strategyProfile?.synergies?.filter(
@@ -1369,14 +1433,14 @@ function App() {
                                         }
                                         rankIcon={profiles[index]?.rankIcon}
                                         rankName={profiles[index]?.rankName}
-                                        onOpenProfileModal={() => setShowProfilesModal(true)}
+                                        onOpenProfileModal={!isGuest ? () => setShowProfilesModal(true) : undefined}
                                         isPinned={pinnedIndices.has(index)}
-                                        onTogglePin={() => handleTogglePin(index)}
-                                        onRerollSingle={() => handleRerollSingle(index)}
-                                        onSwapWithPlayer={(targetIdx) => handleSwapAgents(index, targetIdx)}
-                                        teammates={friends
+                                        onTogglePin={!isGuest ? () => handleTogglePin(index) : undefined}
+                                        onRerollSingle={!isGuest ? () => handleRerollSingle(index) : undefined}
+                                        onSwapWithPlayer={!isGuest ? (targetIdx) => handleSwapAgents(index, targetIdx) : undefined}
+                                        teammates={!isGuest ? friends
                                             .map((name, i) => ({ index: i, name, agentName: assignmentsByIndex[i]?.name }))
-                                            .filter(t => t.index !== index)}
+                                            .filter(t => t.index !== index) : undefined}
                                     />
                                 </motion.div>
                             )}
@@ -1394,12 +1458,12 @@ function App() {
           shuffledOrder={friends.map((_, i) => i)}
           profiles={profiles}
           mapName={selectedMap || undefined}
-          onPlayAgain={() => {
+          onPlayAgain={!isGuest ? () => {
             setShowVictory(false);
             setPhase('IDLE');
-          }}
+          } : undefined}
           onClose={() => setShowVictory(false)}
-          onRecordMatch={() => setShowRecordMatch(true)}
+          onRecordMatch={!isGuest ? () => setShowRecordMatch(true) : undefined}
           onShareCard={() => setShowShareCardModal(true)}
         />
 
