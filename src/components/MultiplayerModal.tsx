@@ -45,8 +45,6 @@ interface MultiplayerModalProps {
   myPlayerName?: string;
   onUpdatePlayerName?: (name: string) => void;
   friends?: string[];
-  mySlotIndex?: number | null;
-  onClaimSlot?: (index: number | null) => void;
 }
 
 export function MultiplayerModal({
@@ -62,8 +60,6 @@ export function MultiplayerModal({
   myPlayerName = 'Player',
   onUpdatePlayerName,
   friends = [],
-  mySlotIndex,
-  onClaimSlot,
 }: MultiplayerModalProps) {
   const [inputCode, setInputCode] = useState<string>('');
   const [customHostCode, setCustomHostCode] = useState<string>('');
@@ -459,28 +455,10 @@ export function MultiplayerModal({
                             </div>
                           </div>
 
-                          {/* Slot Claim Selector for Self or Badge for others */}
-                          {member.isSelf && onClaimSlot && friends.length > 0 ? (
-                            <select
-                              value={mySlotIndex !== null && mySlotIndex !== undefined ? mySlotIndex : ''}
-                              onChange={(e) => {
-                                const val = e.target.value === '' ? null : Number(e.target.value);
-                                onClaimSlot(val);
-                              }}
-                              className="bg-zinc-900 border border-zinc-700 text-cyan-300 text-[10px] rounded px-2 py-1 focus:outline-none shrink-0"
-                            >
-                              <option value="">🎯 เลือก Slot ตี้</option>
-                              {friends.map((f, i) => (
-                                <option key={i} value={i}>Slot {i + 1}: {f}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            member.slotIndex !== null && member.slotIndex !== undefined && friends && friends[member.slotIndex] && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-800 text-cyan-300 border border-zinc-700 shrink-0">
-                                🎯 {friends[member.slotIndex]}
-                              </span>
-                            )
-                          )}
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            ออนไลน์
+                          </span>
                         </div>
                       ))}
 

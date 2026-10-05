@@ -112,8 +112,6 @@ function App() {
     memberCount,
     myPlayerName,
     setMyPlayerName,
-    mySlotIndex,
-    claimSlot,
     createRoom,
     joinRoom,
     leaveRoom,
@@ -1460,8 +1458,6 @@ function App() {
           myPlayerName={myPlayerName}
           onUpdatePlayerName={setMyPlayerName}
           friends={friends}
-          mySlotIndex={mySlotIndex}
-          onClaimSlot={claimSlot}
         />
 
         {/* Live Member Join Floating Toast */}
