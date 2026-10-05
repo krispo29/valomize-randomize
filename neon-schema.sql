@@ -20,5 +20,22 @@ CREATE TABLE IF NOT EXISTS matches (
 CREATE INDEX IF NOT EXISTS idx_matches_created_at ON matches (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_matches_room_code ON matches (room_code);
 
+-- -----------------------------------------------------
+-- Live Room Members & Presence Table
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS room_members (
+  id TEXT PRIMARY KEY,
+  room_code TEXT NOT NULL,
+  player_name TEXT NOT NULL,
+  is_host BOOLEAN DEFAULT FALSE,
+  slot_index INTEGER,
+  last_seen TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_room_members_code ON room_members (room_code);
+CREATE INDEX IF NOT EXISTS idx_room_members_seen ON room_members (last_seen DESC);
+
 -- Sample query to check records:
 -- SELECT * FROM matches ORDER BY created_at DESC LIMIT 10;
+-- SELECT * FROM room_members WHERE last_seen > NOW() - INTERVAL '30 seconds';

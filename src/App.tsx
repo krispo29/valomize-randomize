@@ -101,19 +101,34 @@ function App() {
     }
   };
 
+  const [memberToast, setMemberToast] = useState<string | null>(null);
+
   const {
     roomCode,
     isHost,
     isInRoom,
     connectionStatus: roomConnectionStatus,
+    members: roomMembers,
+    memberCount,
+    myPlayerName,
+    setMyPlayerName,
+    mySlotIndex,
+    claimSlot,
     createRoom,
     joinRoom,
     leaveRoom,
     broadcastState,
     broadcastMatch,
-  } = useMultiplayerRoom(handleRemoteState, (incomingMatch) => {
-    addMatch(incomingMatch);
-  });
+  } = useMultiplayerRoom(
+    handleRemoteState,
+    (incomingMatch) => {
+      addMatch(incomingMatch);
+    },
+    (newMember) => {
+      setMemberToast(`👋 ${newMember.playerName} เข้าร่วมห้องแล้ว!`);
+      setTimeout(() => setMemberToast(null), 4000);
+    }
+  );
 
   // Initial Role Counts (All 0 = Random)
   const [rolesCount, setRolesCount] = useState<Record<Role, number>>({
@@ -1013,22 +1028,29 @@ function App() {
                   : 'bg-cyan-950/40 border-cyan-500/40 text-cyan-200 shadow-cyan-500/5'
               }`}
             >
-              <div className="flex items-center gap-2 truncate">
-                <span className="w-2 h-2 rounded-full bg-current animate-pulse shrink-0" />
-                <span className="font-bold truncate">
-                  {isHost
-                    ? `👑 คุณเป็นหัวห้อง ${roomCode} • การสุ่มของคุณจะถ่ายทอดสดให้เพื่อนทุกคน`
-                    : `👁️ คุณกำลังรับชมการสุ่มสดจากห้อง ${roomCode} (Spectator Mode)`}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setShowMultiplayerModal(true)}
-                  className="px-2.5 py-1 rounded bg-black/40 hover:bg-black/60 font-bold text-[11px] transition"
-                >
-                  จัดการห้อง
-                </button>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 w-full">
+                <div className="flex items-center gap-2 truncate">
+                  <span className="w-2 h-2 rounded-full bg-current animate-pulse shrink-0" />
+                  <span className="font-bold truncate">
+                    {isHost
+                      ? `👑 หัวห้อง ${roomCode}`
+                      : `👁️ รับชมสดจากห้อง ${roomCode}`}
+                  </span>
+                  {roomMembers.length > 0 && (
+                    <span className="text-[11px] font-semibold bg-black/40 px-2 py-0.5 rounded-full border border-white/10 shrink-0">
+                      👥 {roomMembers.length} คน: {roomMembers.map((m) => m.playerName).join(', ')}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setShowMultiplayerModal(true)}
+                    className="px-2.5 py-1 rounded bg-black/40 hover:bg-black/60 font-bold text-[11px] transition text-white border border-white/10"
+                  >
+                    ดูสมาชิก ({roomMembers.length})
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1183,7 +1205,7 @@ function App() {
                         >
                             <Globe className={`h-5 w-5 ${isInRoom ? 'text-cyan-400 animate-spin-slow' : 'text-zinc-400'}`} />
                             <span className="hidden sm:inline text-xs font-bold uppercase tracking-wider">
-                              {isInRoom ? roomCode : 'Room'}
+                              {isInRoom ? `${roomCode} (${memberCount})` : 'Room'}
                             </span>
                             {isInRoom && (
                               <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
@@ -1434,7 +1456,23 @@ function App() {
           onCreateRoom={createRoom}
           onJoinRoom={joinRoom}
           onLeaveRoom={leaveRoom}
+          members={roomMembers}
+          myPlayerName={myPlayerName}
+          onUpdatePlayerName={setMyPlayerName}
+          friends={friends}
+          mySlotIndex={mySlotIndex}
+          onClaimSlot={claimSlot}
         />
+
+        {/* Live Member Join Floating Toast */}
+        {memberToast && (
+          <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-3 duration-200 pointer-events-none">
+            <div className="bg-cyan-950/95 border border-cyan-500/80 text-cyan-200 px-4 py-2.5 rounded-full shadow-2xl flex items-center gap-2.5 text-xs font-bold backdrop-blur-md">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
+              {memberToast}
+            </div>
+          </div>
+        )}
 
         <ShareMatchCardModal
           show={showShareCardModal}

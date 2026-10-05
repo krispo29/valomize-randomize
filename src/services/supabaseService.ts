@@ -1,8 +1,116 @@
 import { createClient, type SupabaseClient, type RealtimeChannel } from '@supabase/supabase-js';
-import { type RoomState, type MultiplayerSyncMessage } from '@/types/multiplayer';
+import { type RoomState, type MultiplayerSyncMessage, type RoomMember } from '@/types/multiplayer';
 import { type MatchRecord } from '@/types/stats';
 
 const SUPABASE_CONFIG_KEY = 'valomize_supabase_config_v1';
+const SESSION_ID_KEY = 'valomize_player_session_id';
+const DISPLAY_NAME_KEY = 'valomize_player_display_name';
+
+export function getPlayerSessionId(): string {
+  try {
+    let id = localStorage.getItem(SESSION_ID_KEY);
+    if (!id) {
+      id = 'user_' + Math.random().toString(36).substring(2, 9);
+      localStorage.setItem(SESSION_ID_KEY, id);
+    }
+    return id;
+  } catch {
+    return 'user_' + Math.random().toString(36).substring(2, 9);
+  }
+}
+
+export function getSavedDisplayName(): string {
+  try {
+    return localStorage.getItem(DISPLAY_NAME_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+export function setSavedDisplayName(name: string): void {
+  try {
+    localStorage.setItem(DISPLAY_NAME_KEY, name.trim());
+  } catch {
+    // ignore
+  }
+}
+
+export async function sendRoomHeartbeat(params: {
+  roomCode: string;
+  playerName: string;
+  sessionId: string;
+  isHost: boolean;
+  slotIndex?: number | null;
+}): Promise<RoomMember[]> {
+  const cleanCode = sanitizeRoomCode(params.roomCode);
+  if (!cleanCode || !params.sessionId) return [];
+
+  try {
+    const res = await fetch('/api/rooms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        room_code: cleanCode,
+        player_name: params.playerName,
+        session_id: params.sessionId,
+        is_host: params.isHost,
+        slot_index: params.slotIndex ?? null,
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.members)) {
+        return data.members.map((m: any) => ({
+          ...m,
+          isSelf: m.id === `${cleanCode}_${params.sessionId}`,
+        }));
+      }
+    }
+  } catch {
+    // API unavailable or offline
+  }
+  return [];
+}
+
+export async function fetchRoomMembers(roomCode: string, sessionId?: string): Promise<RoomMember[]> {
+  const cleanCode = sanitizeRoomCode(roomCode);
+  if (!cleanCode) return [];
+
+  try {
+    const res = await fetch(`/api/rooms?room_code=${encodeURIComponent(cleanCode)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.members)) {
+        return data.members.map((m: any) => ({
+          ...m,
+          isSelf: sessionId ? m.id === `${cleanCode}_${sessionId}` : false,
+        }));
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+export async function leaveRoomPresence(roomCode: string, sessionId: string): Promise<void> {
+  const cleanCode = sanitizeRoomCode(roomCode);
+  if (!cleanCode || !sessionId) return;
+
+  try {
+    await fetch('/api/rooms', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        room_code: cleanCode,
+        session_id: sessionId,
+      }),
+    });
+  } catch {
+    // ignore
+  }
+}
 
 export interface SupabaseConfig {
   url: string;

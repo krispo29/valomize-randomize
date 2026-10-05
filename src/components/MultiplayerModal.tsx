@@ -17,9 +17,12 @@ import {
   Trash2,
   ClipboardPaste,
   Edit3,
+  Users,
+  Smile,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { sanitizeRoomCode } from '@/services/supabaseService';
+import { type RoomMember } from '@/types/multiplayer';
 
 const RECENT_ROOMS_KEY = 'valomize_recent_rooms_v1';
 
@@ -38,6 +41,12 @@ interface MultiplayerModalProps {
   onCreateRoom: (customCode?: string) => string;
   onJoinRoom: (code: string) => void;
   onLeaveRoom: () => void;
+  members?: RoomMember[];
+  myPlayerName?: string;
+  onUpdatePlayerName?: (name: string) => void;
+  friends?: string[];
+  mySlotIndex?: number | null;
+  onClaimSlot?: (index: number | null) => void;
 }
 
 export function MultiplayerModal({
@@ -49,6 +58,12 @@ export function MultiplayerModal({
   onCreateRoom,
   onJoinRoom,
   onLeaveRoom,
+  members = [],
+  myPlayerName = 'Player',
+  onUpdatePlayerName,
+  friends = [],
+  mySlotIndex,
+  onClaimSlot,
 }: MultiplayerModalProps) {
   const [inputCode, setInputCode] = useState<string>('');
   const [customHostCode, setCustomHostCode] = useState<string>('');
@@ -56,6 +71,12 @@ export function MultiplayerModal({
   const [copied, setCopied] = useState<boolean>(false);
   const [showQrCode, setShowQrCode] = useState<boolean>(false);
   const [clipboardDetectedRoom, setClipboardDetectedRoom] = useState<string | null>(null);
+  const [isEditingName, setIsEditingName] = useState<boolean>(false);
+  const [tempName, setTempName] = useState<string>(myPlayerName);
+
+  useEffect(() => {
+    if (myPlayerName) setTempName(myPlayerName);
+  }, [myPlayerName]);
 
   // Recent Rooms State
   const [recentRooms, setRecentRooms] = useState<RecentRoomItem[]>(() => {
@@ -299,6 +320,177 @@ export function MultiplayerModal({
                         </p>
                       </motion.div>
                     )}
+                  </div>
+
+                  {/* Feature: Live Room Members Lobby */}
+                  <div className="bg-zinc-900/90 border border-zinc-800 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-cyan-400" />
+                        <span className="text-xs font-black uppercase tracking-wider text-white">
+                          สมาชิกในห้อง ({members.length} คนออนไลน์)
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-zinc-400 flex items-center gap-1.5 font-mono">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        NEON LIVE
+                      </span>
+                    </div>
+
+                    {/* Display Name Setting Box */}
+                    <div className="p-3 bg-zinc-950/70 rounded-lg border border-zinc-800/80 space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-zinc-400 text-[11px] font-medium flex items-center gap-1.5">
+                          <Smile className="h-3.5 w-3.5 text-yellow-400" /> ชื่อของคุณในห้อง:
+                        </span>
+                        {!isEditingName && (
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingName(true)}
+                            className="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-bold"
+                          >
+                            <Edit3 className="h-3 w-3" /> เปลี่ยนชื่อ
+                          </button>
+                        )}
+                      </div>
+
+                      {isEditingName ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={tempName}
+                            onChange={(e) => setTempName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                onUpdatePlayerName?.(tempName);
+                                setIsEditingName(false);
+                              }
+                            }}
+                            placeholder="พิมพ์ชื่อของคุณ..."
+                            maxLength={16}
+                            className="flex-1 bg-zinc-900 border border-cyan-500/50 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                            autoFocus
+                          />
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              onUpdatePlayerName?.(tempName);
+                              setIsEditingName(false);
+                            }}
+                            className="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 h-8 font-bold"
+                          >
+                            บันทึก
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-black text-cyan-300 flex items-center gap-1.5">
+                            {myPlayerName || 'Player'}
+                            <span className="text-[10px] font-normal text-zinc-500">(จะแสดงให้เพื่อนทุกคนในห้องเห็น)</span>
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Quick Select from Friends */}
+                      {friends && friends.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          <span className="text-[10px] text-zinc-500">เลือกเร็วจากตี้:</span>
+                          {friends.map((fName, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => {
+                                setTempName(fName);
+                                onUpdatePlayerName?.(fName);
+                                setIsEditingName(false);
+                              }}
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded transition ${
+                                myPlayerName === fName
+                                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50'
+                                  : 'bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700'
+                              }`}
+                            >
+                              {fName}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Active Members List */}
+                    <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                      {members.map((member) => (
+                        <div
+                          key={member.id}
+                          className={`flex items-center justify-between p-2.5 rounded-lg border transition ${
+                            member.isSelf
+                              ? 'bg-cyan-950/30 border-cyan-500/40 text-white'
+                              : 'bg-zinc-950/50 border-zinc-800/80 text-zinc-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 truncate">
+                            {/* Avatar */}
+                            <div
+                              className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs shrink-0 shadow-md ${
+                                member.isHost ? 'bg-amber-500 text-zinc-950 ring-2 ring-amber-400/40' : 'bg-cyan-600 text-white'
+                              }`}
+                            >
+                              {member.playerName ? member.playerName.charAt(0).toUpperCase() : '?'}
+                            </div>
+
+                            <div className="truncate">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-bold text-white truncate">{member.playerName}</span>
+                                {member.isHost && (
+                                  <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase px-1.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded">
+                                    <Crown className="h-2.5 w-2.5" /> HOST
+                                  </span>
+                                )}
+                                {member.isSelf && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 bg-cyan-500/20 text-cyan-300 rounded border border-cyan-500/40">
+                                    คุณ
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-zinc-500 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
+                                ออนไลน์อยู่
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Slot Claim Selector for Self or Badge for others */}
+                          {member.isSelf && onClaimSlot && friends.length > 0 ? (
+                            <select
+                              value={mySlotIndex !== null && mySlotIndex !== undefined ? mySlotIndex : ''}
+                              onChange={(e) => {
+                                const val = e.target.value === '' ? null : Number(e.target.value);
+                                onClaimSlot(val);
+                              }}
+                              className="bg-zinc-900 border border-zinc-700 text-cyan-300 text-[10px] rounded px-2 py-1 focus:outline-none shrink-0"
+                            >
+                              <option value="">🎯 เลือก Slot ตี้</option>
+                              {friends.map((f, i) => (
+                                <option key={i} value={i}>Slot {i + 1}: {f}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            member.slotIndex !== null && member.slotIndex !== undefined && friends && friends[member.slotIndex] && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-800 text-cyan-300 border border-zinc-700 shrink-0">
+                                🎯 {friends[member.slotIndex]}
+                              </span>
+                            )
+                          )}
+                        </div>
+                      ))}
+
+                      {members.length <= 1 && (
+                        <div className="p-3 text-center text-xs text-zinc-400 bg-zinc-950/30 rounded-lg border border-dashed border-zinc-800 space-y-1">
+                          <p className="font-semibold text-zinc-300">⏳ กำลังรอเพื่อนคนอื่นเข้าร่วมห้อง...</p>
+                          <p className="text-[11px] text-zinc-500">ส่งลิงก์ห้องหรือ QR Code ด้านบนให้เพื่อนใน Discord ได้เลย!</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="p-3 bg-zinc-900/60 rounded-xl border border-zinc-800 text-xs text-zinc-400 space-y-1 leading-relaxed">

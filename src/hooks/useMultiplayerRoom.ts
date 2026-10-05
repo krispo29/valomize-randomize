@@ -1,16 +1,22 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { type RoomState, type MultiplayerSyncMessage } from '@/types/multiplayer';
+import { type RoomState, type MultiplayerSyncMessage, type RoomMember } from '@/types/multiplayer';
 import { type MatchRecord } from '@/types/stats';
 import {
   subscribeToRoom,
   broadcastStateSync,
   broadcastMatchRecorded,
   sanitizeRoomCode,
+  sendRoomHeartbeat,
+  leaveRoomPresence,
+  getPlayerSessionId,
+  getSavedDisplayName,
+  setSavedDisplayName,
 } from '@/services/supabaseService';
 
 export function useMultiplayerRoom(
   onRemoteStateReceived?: (state: RoomState) => void,
-  onRemoteMatchReceived?: (match: MatchRecord) => void
+  onRemoteMatchReceived?: (match: MatchRecord) => void,
+  onMemberJoined?: (member: RoomMember) => void
 ) {
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [isHost, setIsHost] = useState<boolean>(false);
@@ -18,6 +24,15 @@ export function useMultiplayerRoom(
     'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'ERROR'
   >('DISCONNECTED');
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
+
+  // Room presence & member list
+  const [members, setMembers] = useState<RoomMember[]>([]);
+  const [myPlayerName, setMyPlayerNameState] = useState<string>(() => {
+    return getSavedDisplayName() || 'Player';
+  });
+  const [mySlotIndex, setMySlotIndex] = useState<number | null>(null);
+  const sessionIdRef = useRef<string>(getPlayerSessionId());
+  const prevMemberIdsRef = useRef<Set<string>>(new Set());
 
   const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
 
@@ -117,15 +132,78 @@ export function useMultiplayerRoom(
     [connectToRoom]
   );
 
+  // Heartbeat loop when inside a room
+  useEffect(() => {
+    if (!roomCode) {
+      setMembers([]);
+      prevMemberIdsRef.current = new Set();
+      return;
+    }
+
+    let isMounted = true;
+
+    const doHeartbeat = async () => {
+      try {
+        const activeList = await sendRoomHeartbeat({
+          roomCode,
+          playerName: myPlayerName,
+          sessionId: sessionIdRef.current,
+          isHost,
+          slotIndex: mySlotIndex,
+        });
+
+        if (!isMounted) return;
+
+        if (Array.isArray(activeList)) {
+          // Detect newly joined members
+          activeList.forEach((m) => {
+            if (!m.isSelf && !prevMemberIdsRef.current.has(m.id)) {
+              onMemberJoined?.(m);
+            }
+          });
+
+          prevMemberIdsRef.current = new Set(activeList.map((m) => m.id));
+          setMembers(activeList);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    doHeartbeat();
+    const interval = setInterval(doHeartbeat, 4000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [roomCode, myPlayerName, isHost, mySlotIndex, onMemberJoined]);
+
+  const updatePlayerName = useCallback((name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setMyPlayerNameState(trimmed);
+    setSavedDisplayName(trimmed);
+  }, []);
+
+  const claimSlot = useCallback((index: number | null) => {
+    setMySlotIndex(index);
+  }, []);
+
   const leaveRoom = useCallback(() => {
     if (subscriptionRef.current) {
       subscriptionRef.current.unsubscribe();
       subscriptionRef.current = null;
     }
+    if (roomCode) {
+      leaveRoomPresence(roomCode, sessionIdRef.current);
+    }
     setRoomCode(null);
     setIsHost(false);
     setConnectionStatus('DISCONNECTED');
     setLastSyncedAt(null);
+    setMembers([]);
+    prevMemberIdsRef.current = new Set();
 
     try {
       const url = new URL(window.location.href);
@@ -134,7 +212,7 @@ export function useMultiplayerRoom(
     } catch {
       // ignore
     }
-  }, []);
+  }, [roomCode]);
 
   const broadcastState = useCallback(
     async (state: RoomState) => {
@@ -159,6 +237,12 @@ export function useMultiplayerRoom(
     isInRoom: !!roomCode,
     connectionStatus,
     lastSyncedAt,
+    members,
+    memberCount: members.length,
+    myPlayerName,
+    setMyPlayerName: updatePlayerName,
+    mySlotIndex,
+    claimSlot,
     createRoom,
     joinRoom,
     leaveRoom,

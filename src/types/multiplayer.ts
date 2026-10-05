@@ -22,8 +22,17 @@ export interface RoomState {
   lastUpdated: number;
 }
 
+export interface RoomMember {
+  id: string;
+  playerName: string;
+  isHost: boolean;
+  slotIndex?: number | null;
+  lastSeen: number;
+  isSelf?: boolean;
+}
+
 export interface MultiplayerSyncMessage {
-  type: 'STATE_SYNC' | 'ROLL_TRIGGER' | 'MATCH_RECORDED' | 'ROOM_PING';
+  type: 'STATE_SYNC' | 'ROLL_TRIGGER' | 'MATCH_RECORDED' | 'ROOM_PING' | 'MEMBER_JOIN' | 'MEMBER_LEAVE';
   roomCode: string;
   sender: string;
   timestamp: number;
