@@ -399,23 +399,56 @@ export interface SupabaseConfig {
   anonKey: string;
 }
 
+export const ROOM_CODE_CHARSET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+
+/**
+ * Generate a 4-character alphanumeric collision-free room code prefixed with VALO-.
+ * Character set omits 0, O, 1, I to eliminate font ambiguity.
+ * 32^4 = 1,048,576 combinations.
+ * Example: VALO-7K2X, VALO-9M4Q
+ */
+export function generateRoomCode(): string {
+  let code = '';
+  for (let i = 0; i < 4; i++) {
+    const idx = Math.floor(Math.random() * ROOM_CODE_CHARSET.length);
+    code += ROOM_CODE_CHARSET[idx];
+  }
+  return `VALO-${code}`;
+}
+
 export function sanitizeRoomCode(raw: string): string {
   if (!raw) return '';
-  const trimmed = raw.trim();
+  let trimmed = raw.trim();
+
+  // 1. Extract from URL query parameter if present
   try {
-    if (trimmed.includes('?room=')) {
+    if (trimmed.includes('?room=') || trimmed.includes('&room=')) {
       const url = new URL(trimmed.startsWith('http') ? trimmed : `https://valomize.app/${trimmed}`);
       const r = url.searchParams.get('room');
-      if (r) return r.toUpperCase().trim();
+      if (r) trimmed = r.trim();
     }
   } catch {
-    // ignore
+    const matchUrl = trimmed.match(/[?&]room=([^&#\s]+)/i);
+    if (matchUrl && matchUrl[1]) {
+      trimmed = decodeURIComponent(matchUrl[1]).trim();
+    }
   }
-  const match = trimmed.match(/VALO-[A-Z0-9]+/i);
-  if (match) {
-    return match[0].toUpperCase();
+
+  // 2. Extract explicit VALO- prefix match if embedded in string
+  const valoMatch = trimmed.match(/VALO-[A-Z0-9-]+/i);
+  if (valoMatch) {
+    return valoMatch[0].toUpperCase().slice(0, 16);
   }
-  return trimmed.replace(/[^a-zA-Z0-9-]/g, '').toUpperCase();
+
+  // 3. Remove all non-alphanumeric and non-dash characters
+  const cleaned = trimmed.replace(/[^a-zA-Z0-9-]/g, '').toUpperCase().slice(0, 16);
+
+  // 4. Auto-prefix VALO- if user entered 4 alphanumeric characters without prefix (e.g. "7K2X" or "7023")
+  if (/^[A-Z0-9]{4}$/.test(cleaned)) {
+    return `VALO-${cleaned}`;
+  }
+
+  return cleaned;
 }
 
 export function cleanSupabaseUrl(raw: string): string {

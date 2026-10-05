@@ -13,6 +13,7 @@ import {
   broadcastStateSync,
   broadcastMatchRecorded,
   sanitizeRoomCode,
+  generateRoomCode,
   sendRoomHeartbeat,
   leaveRoomPresence,
   sendBeaconLeave,
@@ -203,9 +204,7 @@ export function useMultiplayerRoom(
 
   const createRoom = useCallback(
     (customCode?: string) => {
-      const code =
-        customCode ||
-        `VALO-${Math.floor(1000 + Math.random() * 9000)}`;
+      const code = customCode ? sanitizeRoomCode(customCode) : generateRoomCode();
       connectToRoom(code, true);
       return code;
     },

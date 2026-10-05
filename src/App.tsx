@@ -30,6 +30,7 @@ import { PartyPresetsBar, PARTY_PRESETS } from '@/components/PartyPresetsBar';
 import { KeyboardShortcutsModal } from '@/components/KeyboardShortcutsModal';
 import { MapVetoModal } from '@/components/MapVetoModal';
 import { GunChallengeModal } from '@/components/GunChallengeModal';
+import { InAppBrowserBanner } from '@/components/InAppBrowserBanner';
 import { generateTacticalBrief } from '@/utils/tacticalBrief';
 import jettLogo from '@/assets/jett_logo.png';
 
@@ -984,6 +985,9 @@ function App() {
 
   return (
     <div className="min-h-screen bg-[#0f1923] text-white font-sans overflow-x-hidden relative flex flex-col">
+      {/* In-App Browser Helper Banner (LINE, Discord, Facebook WebViews) */}
+      <InAppBrowserBanner roomCode={roomCode} />
+
       {/* Background Elements */}
       <div className="absolute top-0 right-0 w-1/2 h-full bg-red-600/10 skew-x-[-20deg] pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-1/3 h-1/2 bg-red-500/5 skew-x-[20deg] pointer-events-none" />

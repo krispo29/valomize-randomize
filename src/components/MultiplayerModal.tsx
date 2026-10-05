@@ -958,7 +958,7 @@ export function MultiplayerModal({
                       <div className="flex gap-2">
                         <input
                           type="text"
-                          placeholder="เช่น GANG, MIKE, SQUAD"
+                          placeholder="เช่น VALO-GANG, VALO-SQUAD หรือชื่อทีม"
                           value={customHostCode}
                           onChange={(e) => setCustomHostCode(e.target.value.toUpperCase())}
                           className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-mono uppercase tracking-wider focus:outline-none focus:border-red-500"
@@ -991,7 +991,7 @@ export function MultiplayerModal({
                       </div>
                       <div>
                         <h4 className="text-xs font-black text-white uppercase">เข้าร่วมห้องเพื่อน (Join Room)</h4>
-                        <p className="text-[11px] text-zinc-400">กรอกรหัสห้อง เช่น VALO-7023 หรือวางลิงก์ห้อง</p>
+                        <p className="text-[11px] text-zinc-400">กรอกรหัสห้อง เช่น VALO-7K2X, 7K2X หรือวางลิงก์ห้อง</p>
                       </div>
                     </div>
 
@@ -999,7 +999,7 @@ export function MultiplayerModal({
                       <div className="relative w-full">
                         <input
                           type="text"
-                          placeholder="เช่น VALO-7023 หรือวางลิงก์ห้อง"
+                          placeholder="เช่น VALO-7K2X, 7K2X หรือวางลิงก์ห้อง"
                           value={inputCode}
                           onChange={(e) => setInputCode(e.target.value)}
                           className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 pr-8 text-xs text-white font-mono uppercase tracking-wider placeholder-zinc-600 focus:outline-none focus:border-cyan-500"
