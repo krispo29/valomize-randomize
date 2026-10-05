@@ -133,10 +133,10 @@ export function StatsDashboard({ show, onClose, onShareMatch }: StatsDashboardPr
     e.target.value = '';
   };
 
-  // 1-Click Pull from Supabase Cloud
+  // 1-Click Pull from Neon / Cloud Database
   const handleCloudPull = async () => {
     setIsCloudSyncing(true);
-    setImportStatus('กำลังดึงข้อมูลแมตช์จาก Supabase Cloud...');
+    setImportStatus('กำลังดึงข้อมูลแมตช์จาก Neon Serverless Database...');
 
     const res = await fetchMatchesFromDatabase();
     if (res.success && res.matches.length > 0) {
@@ -1010,7 +1010,7 @@ export function StatsDashboard({ show, onClose, onShareMatch }: StatsDashboardPr
                       <div>
                         <div className="flex items-center gap-2 mb-1">
                           <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse" />
-                          <h4 className="text-sm font-bold text-white">ดึงข้อมูลสถิติล่าสุดจาก Supabase Cloud</h4>
+                          <h4 className="text-sm font-bold text-white">ดึงข้อมูลสถิติล่าสุดจาก Neon Serverless Database</h4>
                         </div>
                         <p className="text-xs text-zinc-400">
                           ดึงประวัติแมตช์ที่เพื่อนๆ ในตี้เคยบันทึกไว้บน Cloud มาผสานรวมกับเครื่องนี้

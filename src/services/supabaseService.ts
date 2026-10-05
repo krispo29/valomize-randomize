@@ -257,6 +257,30 @@ export async function saveMatchToDatabase(
   match: MatchRecord,
   roomCode?: string
 ): Promise<void> {
+  const cleanCode = roomCode ? sanitizeRoomCode(roomCode) : undefined;
+
+  // 1. Try saving to Neon Serverless Postgres API first
+  try {
+    const res = await fetch('/api/matches', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...match,
+        roomCode: cleanCode,
+      }),
+    });
+
+    if (res.ok) {
+      console.log('✅ Match saved to Neon Postgres successfully');
+      return;
+    }
+  } catch {
+    // If offline or API unavailable, fallback gracefully
+  }
+
+  // 2. Fallback to Supabase if configured
   const client = getSupabase();
   if (!client) return;
 
@@ -264,7 +288,7 @@ export async function saveMatchToDatabase(
     await client.from('matches').insert([
       {
         id: match.id || `match_${Date.now()}`,
-        room_code: roomCode || null,
+        room_code: cleanCode || null,
         map: match.map,
         result: match.result,
         score_team: match.scoreTeam,
@@ -276,23 +300,50 @@ export async function saveMatchToDatabase(
       },
     ]);
   } catch (e) {
-    console.warn('Could not save match to Supabase table:', e);
+    console.warn('Could not save match to database table:', e);
   }
 }
 
 export async function fetchMatchesFromDatabase(
   roomCode?: string
 ): Promise<{ success: boolean; matches: MatchRecord[]; error?: string }> {
+  const cleanCode = roomCode ? sanitizeRoomCode(roomCode) : undefined;
+
+  // 1. Try Neon Serverless Postgres API first
+  try {
+    const url = cleanCode ? `/api/matches?room_code=${encodeURIComponent(cleanCode)}` : '/api/matches';
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.matches)) {
+        return { success: true, matches: data.matches };
+      }
+    } else if (res.status === 503) {
+      const data = await res.json().catch(() => ({}));
+      return {
+        success: false,
+        matches: [],
+        error: data.error || 'DATABASE_URL ยังไม่ได้ตั้งค่าใน Vercel Environment Variables',
+      };
+    }
+  } catch {
+    // Neon API fetch failed, try Supabase fallback below
+  }
+
+  // 2. Fallback to Supabase if configured
   const client = getSupabase();
   if (!client) {
-    return { success: false, matches: [], error: 'ไม่ได้เชื่อมต่อ Supabase Database' };
+    return {
+      success: false,
+      matches: [],
+      error: 'ยังไม่ได้เชื่อมต่อ Cloud Database (กรุณาตั้งค่า DATABASE_URL สำหรับ Neon บน Vercel)',
+    };
   }
 
   try {
     let query = client.from('matches').select('*').order('created_at', { ascending: false });
-    if (roomCode) {
-      const clean = sanitizeRoomCode(roomCode);
-      query = query.eq('room_code', clean);
+    if (cleanCode) {
+      query = query.eq('room_code', cleanCode);
     }
 
     const { data, error } = await query;
