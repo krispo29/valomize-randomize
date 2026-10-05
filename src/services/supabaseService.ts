@@ -394,6 +394,93 @@ export async function broadcastEmojiReaction(
   await broadcastRoomMessage(cleanCode, msg);
 }
 
+export async function broadcastReadyCheckStart(
+  roomCode: string,
+  sender: string,
+  checkId: string,
+  durationSeconds: number = 15
+): Promise<void> {
+  const cleanCode = sanitizeRoomCode(roomCode);
+  const msg: MultiplayerSyncMessage = {
+    type: 'READY_CHECK_START',
+    roomCode: cleanCode,
+    sender,
+    timestamp: Date.now(),
+    payload: {
+      checkId,
+      initiatedBy: sender,
+      durationSeconds,
+      startedAt: Date.now(),
+    },
+  };
+  await broadcastRoomMessage(cleanCode, msg);
+}
+
+export async function broadcastReadyCheckResponse(
+  roomCode: string,
+  sender: string,
+  checkId: string,
+  memberId: string,
+  isReady: boolean
+): Promise<void> {
+  const cleanCode = sanitizeRoomCode(roomCode);
+  const msg: MultiplayerSyncMessage = {
+    type: 'READY_CHECK_RESPONSE',
+    roomCode: cleanCode,
+    sender,
+    timestamp: Date.now(),
+    payload: {
+      checkId,
+      memberId,
+      playerName: sender,
+      isReady,
+    },
+  };
+  await broadcastRoomMessage(cleanCode, msg);
+}
+
+export async function broadcastReadyCheckEnd(
+  roomCode: string,
+  sender: string,
+  checkId: string,
+  allReady: boolean
+): Promise<void> {
+  const cleanCode = sanitizeRoomCode(roomCode);
+  const msg: MultiplayerSyncMessage = {
+    type: 'READY_CHECK_END',
+    roomCode: cleanCode,
+    sender,
+    timestamp: Date.now(),
+    payload: {
+      checkId,
+      success: true,
+      allReady,
+    },
+  };
+  await broadcastRoomMessage(cleanCode, msg);
+}
+
+export async function broadcastTabVisibility(
+  roomCode: string,
+  memberId: string,
+  playerName: string,
+  isAway: boolean
+): Promise<void> {
+  const cleanCode = sanitizeRoomCode(roomCode);
+  const msg: MultiplayerSyncMessage = {
+    type: 'TAB_VISIBILITY',
+    roomCode: cleanCode,
+    sender: playerName,
+    timestamp: Date.now(),
+    payload: {
+      memberId,
+      playerName,
+      isAway,
+    },
+  };
+  await broadcastRoomMessage(cleanCode, msg);
+}
+
 
 export async function saveRoomStateToDatabase(
   roomCode: string,

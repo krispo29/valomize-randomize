@@ -7,6 +7,10 @@ import {
   type MemberKickedPayload,
   type SlotUpdatedPayload,
   type EmojiReactionPayload,
+  type ReadyCheckStartPayload,
+  type ReadyCheckResponsePayload,
+  type ReadyCheckEndPayload,
+  type TabVisibilityPayload,
 } from '@/types/multiplayer';
 import { type MatchRecord } from '@/types/stats';
 import {
@@ -31,9 +35,23 @@ import {
   transferRoomHost,
   broadcastHostTransfer,
   broadcastEmojiReaction,
+  broadcastReadyCheckStart,
+  broadcastReadyCheckResponse,
+  broadcastReadyCheckEnd,
+  broadcastTabVisibility,
   fetchRoomMembers,
   saveRoomStateToDatabase,
 } from '@/services/supabaseService';
+
+export interface ActiveReadyCheck {
+  checkId: string;
+  initiatedBy: string;
+  durationSeconds: number;
+  startedAt: number;
+  readyMemberIds: Set<string>;
+  isComplete: boolean;
+  allReady: boolean;
+}
 
 export function useMultiplayerRoom(
   onRemoteStateReceived?: (state: RoomState) => void,
@@ -43,9 +61,12 @@ export function useMultiplayerRoom(
   onMemberKicked?: (payload: MemberKickedPayload) => void,
   onSelfKicked?: () => void,
   onSlotUpdated?: (payload: SlotUpdatedPayload) => void,
-  onEmojiReaction?: (payload: EmojiReactionPayload) => void
+  onEmojiReaction?: (payload: EmojiReactionPayload) => void,
+  onReadyCheckStart?: (payload: ReadyCheckStartPayload) => void,
+  onReadyCheckEnd?: (payload: ReadyCheckEndPayload) => void
 ) {
   const [roomCode, setRoomCode] = useState<string | null>(null);
+  const [activeReadyCheck, setActiveReadyCheck] = useState<ActiveReadyCheck | null>(null);
   const [isHost, setIsHost] = useState<boolean>(() => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
@@ -147,9 +168,65 @@ export function useMultiplayerRoom(
         if (payload) {
           onEmojiReaction?.(payload);
         }
+      } else if (msg.type === 'TAB_VISIBILITY') {
+        const payload = msg.payload as TabVisibilityPayload;
+        if (payload) {
+          setMembers((prev) =>
+            prev.map((m) => {
+              if (m.id === `${sanitizeRoomCode(msg.roomCode)}_${payload.memberId}` || m.id.endsWith(`_${payload.memberId}`)) {
+                return { ...m, isAway: payload.isAway };
+              }
+              return m;
+            })
+          );
+        }
+      } else if (msg.type === 'READY_CHECK_START') {
+        const payload = msg.payload as ReadyCheckStartPayload;
+        if (payload) {
+          setActiveReadyCheck({
+            checkId: payload.checkId,
+            initiatedBy: payload.initiatedBy,
+            durationSeconds: payload.durationSeconds || 15,
+            startedAt: payload.startedAt || Date.now(),
+            readyMemberIds: new Set<string>([sessionIdRef.current === payload.checkId ? sessionIdRef.current : '']),
+            isComplete: false,
+            allReady: false,
+          });
+          onReadyCheckStart?.(payload);
+        }
+      } else if (msg.type === 'READY_CHECK_RESPONSE') {
+        const payload = msg.payload as ReadyCheckResponsePayload;
+        if (payload) {
+          setActiveReadyCheck((prev) => {
+            if (!prev || prev.checkId !== payload.checkId) return prev;
+            const updated = new Set(prev.readyMemberIds);
+            if (payload.isReady) {
+              updated.add(payload.memberId);
+            } else {
+              updated.delete(payload.memberId);
+            }
+            return {
+              ...prev,
+              readyMemberIds: updated,
+            };
+          });
+        }
+      } else if (msg.type === 'READY_CHECK_END') {
+        const payload = msg.payload as ReadyCheckEndPayload;
+        if (payload) {
+          setActiveReadyCheck((prev) => {
+            if (!prev || prev.checkId !== payload.checkId) return prev;
+            return {
+              ...prev,
+              isComplete: true,
+              allReady: payload.allReady,
+            };
+          });
+          onReadyCheckEnd?.(payload);
+        }
       }
     },
-    [onRemoteStateReceived, onRemoteMatchReceived, onHostTransferred, onMemberKicked, onSelfKicked, onSlotUpdated, onEmojiReaction, isHost]
+    [onRemoteStateReceived, onRemoteMatchReceived, onHostTransferred, onMemberKicked, onSelfKicked, onSlotUpdated, onEmojiReaction, onReadyCheckStart, onReadyCheckEnd, isHost]
   );
 
   // Auto-connect if room query parameter exists
@@ -506,6 +583,98 @@ export function useMultiplayerRoom(
     [roomCode, myPlayerName, onEmojiReaction]
   );
 
+  // Tab Visibility & Alt-Tab detection
+  useEffect(() => {
+    if (!roomCode) return;
+
+    const handleVisibilityChange = () => {
+      const isAway = document.hidden;
+      broadcastTabVisibility(roomCode, sessionIdRef.current, myPlayerName, isAway).catch(() => {});
+      setMembers((prev) =>
+        prev.map((m) => (m.isSelf ? { ...m, isAway } : m))
+      );
+    };
+
+    const handleBlur = () => {
+      broadcastTabVisibility(roomCode, sessionIdRef.current, myPlayerName, true).catch(() => {});
+      setMembers((prev) => prev.map((m) => (m.isSelf ? { ...m, isAway: true } : m)));
+    };
+
+    const handleFocus = () => {
+      broadcastTabVisibility(roomCode, sessionIdRef.current, myPlayerName, false).catch(() => {});
+      setMembers((prev) => prev.map((m) => (m.isSelf ? { ...m, isAway: false } : m)));
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleBlur);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [roomCode, myPlayerName]);
+
+  // Ready Check Methods
+  const startReadyCheck = useCallback(
+    (durationSeconds = 15) => {
+      if (!roomCode || !isHost) return;
+      const checkId = `rc_${Date.now()}`;
+      const startedAt = Date.now();
+      const initialReady = new Set<string>([sessionIdRef.current]);
+
+      setActiveReadyCheck({
+        checkId,
+        initiatedBy: myPlayerName,
+        durationSeconds,
+        startedAt,
+        readyMemberIds: initialReady,
+        isComplete: false,
+        allReady: false,
+      });
+
+      broadcastReadyCheckStart(roomCode, myPlayerName, checkId, durationSeconds).catch(() => {});
+      broadcastReadyCheckResponse(roomCode, myPlayerName, checkId, sessionIdRef.current, true).catch(() => {});
+    },
+    [roomCode, isHost, myPlayerName]
+  );
+
+  const respondReadyCheck = useCallback(
+    (isReady: boolean) => {
+      if (!roomCode || !activeReadyCheck) return;
+      setActiveReadyCheck((prev) => {
+        if (!prev) return null;
+        const nextReady = new Set(prev.readyMemberIds);
+        if (isReady) {
+          nextReady.add(sessionIdRef.current);
+        } else {
+          nextReady.delete(sessionIdRef.current);
+        }
+        return { ...prev, readyMemberIds: nextReady };
+      });
+
+      broadcastReadyCheckResponse(
+        roomCode,
+        myPlayerName,
+        activeReadyCheck.checkId,
+        sessionIdRef.current,
+        isReady
+      ).catch(() => {});
+    },
+    [roomCode, activeReadyCheck, myPlayerName]
+  );
+
+  const cancelReadyCheck = useCallback(() => {
+    if (!roomCode || !activeReadyCheck) return;
+    broadcastReadyCheckEnd(roomCode, myPlayerName, activeReadyCheck.checkId, false).catch(() => {});
+    setActiveReadyCheck(null);
+  }, [roomCode, activeReadyCheck, myPlayerName]);
+
+  const closeReadyCheck = useCallback(() => {
+    setActiveReadyCheck(null);
+  }, []);
+
   return {
     roomCode,
     isHost,
@@ -527,5 +696,10 @@ export function useMultiplayerRoom(
     kickMember,
     changeMemberSlot,
     sendEmojiReaction,
+    activeReadyCheck,
+    startReadyCheck,
+    respondReadyCheck,
+    cancelReadyCheck,
+    closeReadyCheck,
   };
 }

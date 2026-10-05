@@ -7,7 +7,7 @@ import { DEFAULT_FRIENDS, type Agent, type Role, type ValorantMap, MAP_META, MAP
 import { valorantMeta2026, type AgentStrategyProfile } from '@/data/meta';
 import { 
   Shuffle, UserCog, Settings2, Map as MapIcon, Volume2, VolumeX, 
-  BarChart3, Trophy, Globe, Zap, Ban, Keyboard, Tv, Copy, Swords, Dices, Eye, ArrowUpDown 
+  BarChart3, Trophy, Globe, Zap, Ban, Keyboard, Tv, Copy, Swords, Dices, Eye, ArrowUpDown, UserCheck
 } from 'lucide-react';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
@@ -32,6 +32,7 @@ import { MapVetoModal } from '@/components/MapVetoModal';
 import { GunChallengeModal } from '@/components/GunChallengeModal';
 import { InAppBrowserBanner } from '@/components/InAppBrowserBanner';
 import { FloatingEmojiReactions } from '@/components/FloatingEmojiReactions';
+import { ReadyCheckModal } from '@/components/ReadyCheckModal';
 import { generateTacticalBrief } from '@/utils/tacticalBrief';
 import jettLogo from '@/assets/jett_logo.png';
 
@@ -132,6 +133,11 @@ function App() {
     kickMember,
     changeMemberSlot,
     sendEmojiReaction,
+    activeReadyCheck,
+    startReadyCheck,
+    respondReadyCheck,
+    cancelReadyCheck,
+    closeReadyCheck,
   } = useMultiplayerRoom(
     handleRemoteState,
     (incomingMatch) => {
@@ -170,6 +176,20 @@ function App() {
     },
     (reactionPayload) => {
       setLatestReaction(reactionPayload);
+    },
+    (rcStartPayload) => {
+      playLock();
+      setToastMessage(`⚡ ${rcStartPayload.initiatedBy} ส่งสัญญาณเช็กความพร้อมตี้ (Ready Check)!`);
+      setTimeout(() => setToastMessage(null), 4000);
+    },
+    (rcEndPayload) => {
+      if (rcEndPayload.allReady) {
+        playVictory();
+        setToastMessage('🎉 สมาชิกทุกคนพร้อมแล้ว! ลุยได้เลย');
+      } else {
+        setToastMessage('⏳ การเช็กความพร้อมสิ้นสุดลง');
+      }
+      setTimeout(() => setToastMessage(null), 3500);
     }
   );
 
@@ -1081,6 +1101,21 @@ function App() {
               </span>
             )}
 
+            {isInRoom && isHost && (
+              <button
+                type="button"
+                onClick={() => {
+                  startReadyCheck();
+                  playClick();
+                }}
+                className="px-2.5 py-1.5 rounded-lg border bg-emerald-950/60 border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/60 font-bold flex items-center gap-1.5 transition active:scale-95 shadow"
+                title="ส่งสัญญาณเช็กความพร้อมเพื่อนทุกคนในห้อง (Ready Check)"
+              >
+                <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Ready Check</span>
+              </button>
+            )}
+
             {!isGuest && (
               <button
                 type="button"
@@ -1617,6 +1652,7 @@ function App() {
                                     }}
                                 >
                                     <AgentCard 
+                                        isAway={isInRoom ? Boolean(roomMembers.find(m => m.slotIndex === index)?.isAway) : false}
                                         playerName={friendName}
                                         agent={assignedAgent || null}
                                         rolling={isFaceDown} 
@@ -1764,6 +1800,22 @@ function App() {
               setToastMessage(`❌ เกิดข้อผิดพลาด: ${res.error || 'สลับสล็อตไม่สำเร็จ'}`);
               setTimeout(() => setToastMessage(null), 3000);
             }
+          }}
+          onStartReadyCheck={isHost ? () => startReadyCheck() : undefined}
+        />
+
+        {/* Ready Check Modal */}
+        <ReadyCheckModal
+          show={!!activeReadyCheck}
+          activeReadyCheck={activeReadyCheck}
+          members={roomMembers}
+          isHost={isHost}
+          onRespond={respondReadyCheck}
+          onCancel={cancelReadyCheck}
+          onClose={closeReadyCheck}
+          onRollNow={() => {
+            closeReadyCheck();
+            handleRollSafe();
           }}
         />
 

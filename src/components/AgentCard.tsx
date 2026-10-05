@@ -175,6 +175,7 @@ interface AgentCardProps {
   readonly onRerollSingle?: () => void;
   readonly onSwapWithPlayer?: (targetIndex: number) => void;
   readonly teammates?: Array<{ index: number; name: string; agentName?: string }>;
+  readonly isAway?: boolean;
 }
 
 export function AgentCard({ 
@@ -183,6 +184,7 @@ export function AgentCard({
   rolling, 
   className, 
   onEditName, 
+  isAway,
   canEdit,
   status,
   onStatusChange,
@@ -387,6 +389,11 @@ export function AgentCard({
                   : "text-white"
               )}>
                 <span>{playerName}</span>
+                {isAway && !isWaiting && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-0.5" title="ผู้เล่นกำลังพับหน้าจอ">
+                    🟡 พับจอ
+                  </span>
+                )}
                 {rankIcon && !isWaiting && (
                   <img
                     src={rankIcon}

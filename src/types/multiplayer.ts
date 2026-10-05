@@ -29,6 +29,7 @@ export interface RoomMember {
   slotIndex?: number | null;
   lastSeen: number;
   isSelf?: boolean;
+  isAway?: boolean;
 }
 
 export interface HostTransferredPayload {
@@ -58,6 +59,32 @@ export interface EmojiReactionPayload {
   xOffsetPercent?: number; // 15% to 85%
 }
 
+export interface ReadyCheckStartPayload {
+  checkId: string;
+  initiatedBy: string;
+  durationSeconds: number;
+  startedAt: number;
+}
+
+export interface ReadyCheckResponsePayload {
+  checkId: string;
+  memberId: string;
+  playerName: string;
+  isReady: boolean;
+}
+
+export interface ReadyCheckEndPayload {
+  checkId: string;
+  success: boolean;
+  allReady: boolean;
+}
+
+export interface TabVisibilityPayload {
+  memberId: string;
+  playerName: string;
+  isAway: boolean;
+}
+
 export interface MultiplayerSyncMessage {
   type: 
     | 'STATE_SYNC' 
@@ -69,7 +96,11 @@ export interface MultiplayerSyncMessage {
     | 'HOST_TRANSFERRED'
     | 'MEMBER_KICKED'
     | 'SLOT_UPDATED'
-    | 'EMOJI_REACTION';
+    | 'EMOJI_REACTION'
+    | 'READY_CHECK_START'
+    | 'READY_CHECK_RESPONSE'
+    | 'READY_CHECK_END'
+    | 'TAB_VISIBILITY';
   roomCode: string;
   sender: string;
   timestamp: number;

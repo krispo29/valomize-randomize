@@ -50,6 +50,7 @@ interface MultiplayerModalProps {
   onTransferHost?: (targetMember: RoomMember) => Promise<void> | void;
   onKickMember?: (targetMember: RoomMember) => Promise<void> | void;
   onChangeSlot?: (targetMemberId: string, newSlotIndex: number) => Promise<void> | void;
+  onStartReadyCheck?: () => void;
 }
 
 export function MultiplayerModal({
@@ -67,6 +68,7 @@ export function MultiplayerModal({
   onTransferHost,
   onKickMember,
   onChangeSlot,
+  onStartReadyCheck,
 }: MultiplayerModalProps) {
   const [inputCode, setInputCode] = useState<string>('');
   const [customHostCode, setCustomHostCode] = useState<string>('');
@@ -491,9 +493,25 @@ export function MultiplayerModal({
                         <span className="text-[11px] font-black uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
                           <UserCheck className="w-3.5 h-3.5" /> ตัวจริง 5 คน (Active Roster)
                         </span>
-                        <span className="text-[10px] text-zinc-500 font-mono">
-                          {activeSlots.filter(Boolean).length}/5 คน
-                        </span>
+                        <div className="flex items-center gap-2">
+                          {isHost && onStartReadyCheck && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onStartReadyCheck();
+                                onClose();
+                              }}
+                              className="px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold flex items-center gap-1 transition active:scale-95 shadow"
+                              title="ส่งสัญญาณเช็กความพร้อมเพื่อนทุกคนในห้อง"
+                            >
+                              <UserCheck className="w-2.5 h-2.5" />
+                              <span>Ready Check</span>
+                            </button>
+                          )}
+                          <span className="text-[10px] text-zinc-500 font-mono">
+                            {activeSlots.filter(Boolean).length}/5 คน
+                          </span>
+                        </div>
                       </div>
 
                       {/* 5 Slots List */}
@@ -536,6 +554,11 @@ export function MultiplayerModal({
                                         คุณ
                                       </span>
                                     )}
+                                    {member.isAway ? (
+                                      <span className="text-[9px] font-bold px-1.5 py-0.5 bg-amber-500/20 text-amber-300 rounded border border-amber-500/30 flex items-center gap-0.5" title="ผู้เล่นกำลังพับหน้าจอ">
+                                        🟡 พับจอ
+                                      </span>
+                                    ) : null}
                                   </div>
                                   <span className="text-[10px] text-zinc-500 flex items-center gap-1">
                                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
@@ -748,6 +771,11 @@ export function MultiplayerModal({
                                         คุณ
                                       </span>
                                     )}
+                                    {member.isAway ? (
+                                      <span className="text-[9px] font-bold px-1.5 py-0.5 bg-amber-500/20 text-amber-300 rounded border border-amber-500/30 flex items-center gap-0.5" title="ผู้เล่นกำลังพับหน้าจอ">
+                                        🟡 พับจอ
+                                      </span>
+                                    ) : null}
                                   </div>
                                   <span className="text-[9px] text-zinc-500">ผู้ชม (กำลังดูสด)</span>
                                 </div>
