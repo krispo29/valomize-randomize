@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
 import {
@@ -20,6 +20,8 @@ import {
   Users,
   Smile,
   UserX,
+  ArrowUpDown,
+  UserCheck,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { sanitizeRoomCode } from '@/services/supabaseService';
@@ -47,6 +49,7 @@ interface MultiplayerModalProps {
   onUpdatePlayerName?: (name: string) => void;
   onTransferHost?: (targetMember: RoomMember) => Promise<void> | void;
   onKickMember?: (targetMember: RoomMember) => Promise<void> | void;
+  onChangeSlot?: (targetMemberId: string, newSlotIndex: number) => Promise<void> | void;
 }
 
 export function MultiplayerModal({
@@ -63,6 +66,7 @@ export function MultiplayerModal({
   onUpdatePlayerName,
   onTransferHost,
   onKickMember,
+  onChangeSlot,
 }: MultiplayerModalProps) {
   const [inputCode, setInputCode] = useState<string>('');
   const [customHostCode, setCustomHostCode] = useState<string>('');
@@ -76,6 +80,8 @@ export function MultiplayerModal({
   const [isTransferring, setIsTransferring] = useState<boolean>(false);
   const [confirmKickTarget, setConfirmKickTarget] = useState<RoomMember | null>(null);
   const [isKicking, setIsKicking] = useState<boolean>(false);
+  const [slotMenuMemberId, setSlotMenuMemberId] = useState<string | null>(null);
+  const [isChangingSlot, setIsChangingSlot] = useState<boolean>(false);
 
   const handleConfirmTransfer = async (member: RoomMember) => {
     if (!onTransferHost) return;
@@ -102,6 +108,61 @@ export function MultiplayerModal({
       setIsKicking(false);
     }
   };
+
+  const handleSelectSlot = async (memberId: string, slotIndex: number) => {
+    if (!onChangeSlot) return;
+    setIsChangingSlot(true);
+    try {
+      await onChangeSlot(memberId, slotIndex);
+      setSlotMenuMemberId(null);
+    } catch {
+      // ignore
+    } finally {
+      setIsChangingSlot(false);
+    }
+  };
+
+  // Compute 5-player active roster and spectator/bench list
+  const { activeSlots, benchMembers, myMember } = useMemo(() => {
+    const slots: (RoomMember | null)[] = [null, null, null, null, null];
+    const unslotted: RoomMember[] = [];
+    const bench: RoomMember[] = [];
+
+    const sorted = [...members].sort((a, b) => {
+      if (a.isHost && !b.isHost) return -1;
+      if (!a.isHost && b.isHost) return 1;
+      return 0;
+    });
+
+    sorted.forEach((m) => {
+      if (m.slotIndex === -1) {
+        bench.push(m);
+      } else if (m.slotIndex !== null && m.slotIndex !== undefined && m.slotIndex >= 0 && m.slotIndex < 5) {
+        if (!slots[m.slotIndex]) {
+          slots[m.slotIndex] = m;
+        } else {
+          unslotted.push(m);
+        }
+      } else {
+        unslotted.push(m);
+      }
+    });
+
+    for (let i = 0; i < 5; i++) {
+      if (!slots[i] && unslotted.length > 0) {
+        slots[i] = unslotted.shift()!;
+      }
+    }
+    bench.push(...unslotted);
+
+    const self = members.find((m) => m.isSelf);
+
+    return {
+      activeSlots: slots,
+      benchMembers: bench,
+      myMember: self,
+    };
+  }, [members]);
 
 
   useEffect(() => {
@@ -424,108 +485,331 @@ export function MultiplayerModal({
 
                     </div>
 
-                    {/* Active Members List */}
-                    <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                      {members.map((member) => (
-                        <div
-                          key={member.id}
-                          className={`flex items-center justify-between p-2.5 rounded-lg border transition ${
-                            member.isSelf
-                              ? 'bg-cyan-950/30 border-cyan-500/40 text-white'
-                              : 'bg-zinc-950/50 border-zinc-800/80 text-zinc-300'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5 truncate">
-                            {/* Avatar */}
+                    {/* Active Squad (5 Slots) */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                          <UserCheck className="w-3.5 h-3.5" /> ตัวจริง 5 คน (Active Roster)
+                        </span>
+                        <span className="text-[10px] text-zinc-500 font-mono">
+                          {activeSlots.filter(Boolean).length}/5 คน
+                        </span>
+                      </div>
+
+                      {/* 5 Slots List */}
+                      <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                        {activeSlots.map((member, slotIdx) => (
+                          member ? (
                             <div
-                              className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs shrink-0 shadow-md ${
-                                member.isHost ? 'bg-amber-500 text-zinc-950 ring-2 ring-amber-400/40' : 'bg-cyan-600 text-white'
+                              key={member.id}
+                              className={`flex items-center justify-between p-2.5 rounded-lg border transition ${
+                                member.isSelf
+                                  ? 'bg-cyan-950/30 border-cyan-500/40 text-white'
+                                  : 'bg-zinc-950/50 border-zinc-800/80 text-zinc-300'
                               }`}
                             >
-                              {member.playerName ? member.playerName.charAt(0).toUpperCase() : '?'}
-                            </div>
+                              <div className="flex items-center gap-2.5 truncate">
+                                {/* Slot Avatar */}
+                                <div className="relative shrink-0">
+                                  <div
+                                    className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs shadow-md ${
+                                      member.isHost ? 'bg-amber-500 text-zinc-950 ring-2 ring-amber-400/40' : 'bg-cyan-600 text-white'
+                                    }`}
+                                  >
+                                    {member.playerName ? member.playerName.charAt(0).toUpperCase() : '?'}
+                                  </div>
+                                  <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-zinc-900 border border-zinc-700 text-[9px] font-black rounded-full text-cyan-400 flex items-center justify-center">
+                                    {slotIdx + 1}
+                                  </span>
+                                </div>
 
-                            <div className="truncate">
+                                <div className="truncate">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-xs font-bold text-white truncate">{member.playerName}</span>
+                                    {member.isHost && (
+                                      <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase px-1.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded">
+                                        <Crown className="h-2.5 w-2.5" /> HOST
+                                      </span>
+                                    )}
+                                    {member.isSelf && (
+                                      <span className="text-[9px] font-bold px-1.5 py-0.5 bg-cyan-500/20 text-cyan-300 rounded border border-cyan-500/40">
+                                        คุณ
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-[10px] text-zinc-500 flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
+                                    Slot {slotIdx + 1}
+                                  </span>
+                                </div>
+                              </div>
+
                               <div className="flex items-center gap-1.5">
-                                <span className="text-xs font-bold text-white truncate">{member.playerName}</span>
-                                {member.isHost && (
-                                  <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase px-1.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded">
-                                    <Crown className="h-2.5 w-2.5" /> HOST
-                                  </span>
+                                {/* Slot Switcher */}
+                                {(isHost || member.isSelf) && onChangeSlot && (
+                                  <div className="relative">
+                                    {slotMenuMemberId === member.id ? (
+                                      <div className="flex items-center gap-1 animate-in fade-in duration-150 bg-zinc-900 border border-cyan-500/50 p-1 rounded-lg shadow-xl z-20">
+                                        {[0, 1, 2, 3, 4].map((s) => (
+                                          <button
+                                            key={s}
+                                            type="button"
+                                            disabled={isChangingSlot || s === slotIdx}
+                                            onClick={() => handleSelectSlot(member.id, s)}
+                                            className={`px-1.5 py-0.5 text-[10px] font-black rounded transition ${
+                                              s === slotIdx
+                                                ? 'bg-cyan-600 text-white'
+                                                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                                            }`}
+                                          >
+                                            S{s + 1}
+                                          </button>
+                                        ))}
+                                        <button
+                                          type="button"
+                                          disabled={isChangingSlot}
+                                          onClick={() => handleSelectSlot(member.id, -1)}
+                                          title="ย้ายไปตัวสำรอง"
+                                          className="px-1.5 py-0.5 text-[10px] font-bold bg-amber-600/30 hover:bg-amber-600/50 text-amber-300 rounded transition"
+                                        >
+                                          สำรอง
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setSlotMenuMemberId(null)}
+                                          className="px-1 py-0.5 text-[10px] text-zinc-400 hover:text-white"
+                                        >
+                                          ✕
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSlotMenuMemberId(member.id);
+                                          setConfirmTransferTarget(null);
+                                          setConfirmKickTarget(null);
+                                        }}
+                                        title="สลับ Slot หรือย้ายไปสำรอง"
+                                        className="px-2 py-1 rounded bg-zinc-800/90 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-[10px] font-bold flex items-center gap-1 transition active:scale-95"
+                                      >
+                                        <ArrowUpDown className="w-2.5 h-2.5 text-cyan-400" />
+                                        <span>Slot {slotIdx + 1}</span>
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
-                                {member.isSelf && (
-                                  <span className="text-[9px] font-bold px-1.5 py-0.5 bg-cyan-500/20 text-cyan-300 rounded border border-cyan-500/40">
-                                    คุณ
-                                  </span>
+
+                                {/* Host Actions: Transfer Host & Kick */}
+                                {isHost && !member.isSelf && !member.isHost && (
+                                  <>
+                                    {/* Transfer Host */}
+                                    {onTransferHost && (
+                                      confirmTransferTarget?.id === member.id ? (
+                                        <div className="flex items-center gap-1 animate-in fade-in duration-150">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleConfirmTransfer(member)}
+                                            disabled={isTransferring}
+                                            className="px-2 py-1 bg-amber-500 hover:bg-amber-400 text-black text-[10px] font-black rounded shadow transition active:scale-95 flex items-center gap-1"
+                                          >
+                                            <Crown className="w-2.5 h-2.5" />
+                                            <span>{isTransferring ? 'กำลังโอน...' : 'ยืนยัน'}</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setConfirmTransferTarget(null)}
+                                            disabled={isTransferring}
+                                            className="px-1.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] rounded transition"
+                                          >
+                                            ยกเลิก
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setConfirmTransferTarget(member);
+                                            setConfirmKickTarget(null);
+                                            setSlotMenuMemberId(null);
+                                          }}
+                                          title={`โอนสิทธิ์หัวห้องให้ ${member.playerName}`}
+                                          className="px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[10px] font-bold flex items-center gap-1 transition active:scale-95"
+                                        >
+                                          <Crown className="w-3 h-3 text-amber-400" />
+                                          <span>โฮสต์</span>
+                                        </button>
+                                      )
+                                    )}
+
+                                    {/* Kick Member */}
+                                    {onKickMember && (
+                                      confirmKickTarget?.id === member.id ? (
+                                        <div className="flex items-center gap-1 animate-in fade-in duration-150">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleConfirmKick(member)}
+                                            disabled={isKicking}
+                                            className="px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-black rounded shadow transition active:scale-95 flex items-center gap-1"
+                                          >
+                                            <UserX className="w-2.5 h-2.5" />
+                                            <span>{isKicking ? 'กำลังเตะ...' : 'ยืนยัน'}</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setConfirmKickTarget(null)}
+                                            disabled={isKicking}
+                                            className="px-1.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] rounded transition"
+                                          >
+                                            ยกเลิก
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setConfirmKickTarget(member);
+                                            setConfirmTransferTarget(null);
+                                            setSlotMenuMemberId(null);
+                                          }}
+                                          title={`เตะ ${member.playerName} ออกจากห้อง`}
+                                          className="px-2 py-1 rounded bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-[10px] font-bold flex items-center gap-1 transition active:scale-95"
+                                        >
+                                          <UserX className="w-3 h-3 text-rose-400" />
+                                          <span>เตะ</span>
+                                        </button>
+                                      )
+                                    )}
+                                  </>
                                 )}
                               </div>
-                              <span className="text-[10px] text-zinc-500 flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
-                                ออนไลน์อยู่
-                              </span>
                             </div>
-                          </div>
+                          ) : (
+                            /* Empty Slot Box */
+                            <div
+                              key={`empty_slot_${slotIdx}`}
+                              className="flex items-center justify-between p-2 rounded-lg border border-dashed border-zinc-800/80 bg-zinc-950/20 text-zinc-500 text-xs"
+                            >
+                              <div className="flex items-center gap-2">
+                                <div className="w-7 h-7 rounded-full border border-dashed border-zinc-700 flex items-center justify-center text-[10px] font-bold text-zinc-500">
+                                  {slotIdx + 1}
+                                </div>
+                                <span className="text-[11px] font-medium text-zinc-400">
+                                  Slot {slotIdx + 1} ว่าง
+                                </span>
+                              </div>
+                              {myMember && onChangeSlot && (
+                                <button
+                                  type="button"
+                                  disabled={isChangingSlot}
+                                  onClick={() => handleSelectSlot(myMember.id, slotIdx)}
+                                  className="px-2.5 py-1 rounded bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/30 text-cyan-300 text-[10px] font-bold flex items-center gap-1 transition active:scale-95"
+                                >
+                                  + นั่ง Slot นี้
+                                </button>
+                              )}
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    </div>
 
-                          <div className="flex items-center gap-2">
-                            {/* Host Actions: Transfer Host & Kick Member */}
-                            {isHost && !member.isSelf && !member.isHost && (
+                    {/* Spectator / Bench Section (If any bench members exist) */}
+                    {benchMembers.length > 0 && (
+                      <div className="space-y-2 pt-2 border-t border-zinc-800/80">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                            <Eye className="w-3.5 h-3.5" /> ตัวสำรอง / ผู้ชม ({benchMembers.length} คน)
+                          </span>
+                          <span className="text-[10px] text-zinc-500">
+                            ดูการสุ่มสด Real-time
+                          </span>
+                        </div>
+
+                        <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                          {benchMembers.map((member) => (
+                            <div
+                              key={member.id}
+                              className={`flex items-center justify-between p-2 rounded-lg border transition ${
+                                member.isSelf
+                                  ? 'bg-amber-950/20 border-amber-500/40 text-white'
+                                  : 'bg-zinc-950/40 border-zinc-800/60 text-zinc-400'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 truncate">
+                                <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center font-bold text-xs text-zinc-300">
+                                  {member.playerName ? member.playerName.charAt(0).toUpperCase() : '?'}
+                                </div>
+                                <div className="truncate">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-xs font-bold text-zinc-300 truncate">{member.playerName}</span>
+                                    {member.isSelf && (
+                                      <span className="text-[9px] font-bold px-1.5 py-0.2 bg-amber-500/20 text-amber-300 rounded border border-amber-500/30">
+                                        คุณ
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-[9px] text-zinc-500">ผู้ชม (กำลังดูสด)</span>
+                                </div>
+                              </div>
+
                               <div className="flex items-center gap-1.5">
-                                {/* Transfer Host Button */}
-                                {onTransferHost && (
-                                  confirmTransferTarget?.id === member.id ? (
-                                    <div className="flex items-center gap-1 animate-in fade-in duration-150">
+                                {/* Promote to Slot */}
+                                {(isHost || member.isSelf) && onChangeSlot && (
+                                  <div className="relative">
+                                    {slotMenuMemberId === member.id ? (
+                                      <div className="flex items-center gap-1 animate-in fade-in duration-150 bg-zinc-900 border border-cyan-500/50 p-1 rounded-lg shadow-xl z-20">
+                                        {[0, 1, 2, 3, 4].map((s) => (
+                                          <button
+                                            key={s}
+                                            type="button"
+                                            disabled={isChangingSlot}
+                                            onClick={() => handleSelectSlot(member.id, s)}
+                                            className="px-1.5 py-0.5 text-[10px] font-black bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded transition"
+                                          >
+                                            S{s + 1}
+                                          </button>
+                                        ))}
+                                        <button
+                                          type="button"
+                                          onClick={() => setSlotMenuMemberId(null)}
+                                          className="px-1 py-0.5 text-[10px] text-zinc-400 hover:text-white"
+                                        >
+                                          ✕
+                                        </button>
+                                      </div>
+                                    ) : (
                                       <button
                                         type="button"
-                                        onClick={() => handleConfirmTransfer(member)}
-                                        disabled={isTransferring}
-                                        className="px-2 py-1 bg-amber-500 hover:bg-amber-400 text-black text-[10px] font-black rounded shadow transition active:scale-95 flex items-center gap-1"
+                                        onClick={() => {
+                                          setSlotMenuMemberId(member.id);
+                                          setConfirmTransferTarget(null);
+                                          setConfirmKickTarget(null);
+                                        }}
+                                        className="px-2 py-0.5 rounded bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/30 text-cyan-300 text-[10px] font-bold transition active:scale-95"
                                       >
-                                        <Crown className="w-2.5 h-2.5" />
-                                        <span>{isTransferring ? 'กำลังโอน...' : 'ยืนยัน'}</span>
+                                        ขึ้นตัวจริง ▾
                                       </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setConfirmTransferTarget(null)}
-                                        disabled={isTransferring}
-                                        className="px-1.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] rounded transition"
-                                      >
-                                        ยกเลิก
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setConfirmTransferTarget(member);
-                                        setConfirmKickTarget(null);
-                                      }}
-                                      title={`โอนสิทธิ์หัวห้องให้ ${member.playerName}`}
-                                      className="px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[10px] font-bold flex items-center gap-1 transition active:scale-95"
-                                    >
-                                      <Crown className="w-3 h-3 text-amber-400" />
-                                      <span>มอบโฮสต์</span>
-                                    </button>
-                                  )
+                                    )}
+                                  </div>
                                 )}
 
-                                {/* Kick Member Button */}
-                                {onKickMember && (
+                                {/* Host Kick */}
+                                {isHost && !member.isSelf && onKickMember && (
                                   confirmKickTarget?.id === member.id ? (
                                     <div className="flex items-center gap-1 animate-in fade-in duration-150">
                                       <button
                                         type="button"
                                         onClick={() => handleConfirmKick(member)}
                                         disabled={isKicking}
-                                        className="px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-black rounded shadow transition active:scale-95 flex items-center gap-1"
+                                        className="px-2 py-0.5 bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-black rounded shadow"
                                       >
-                                        <UserX className="w-2.5 h-2.5" />
-                                        <span>{isKicking ? 'กำลังเตะ...' : 'ยืนยัน'}</span>
+                                        {isKicking ? '...' : 'เตะ'}
                                       </button>
                                       <button
                                         type="button"
                                         onClick={() => setConfirmKickTarget(null)}
-                                        disabled={isKicking}
-                                        className="px-1.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] rounded transition"
+                                        className="px-1 py-0.5 bg-zinc-800 text-zinc-300 text-[10px] rounded"
                                       >
                                         ยกเลิก
                                       </button>
@@ -533,36 +817,19 @@ export function MultiplayerModal({
                                   ) : (
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        setConfirmKickTarget(member);
-                                        setConfirmTransferTarget(null);
-                                      }}
-                                      title={`เตะ ${member.playerName} ออกจากห้อง`}
-                                      className="px-2 py-1 rounded bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-[10px] font-bold flex items-center gap-1 transition active:scale-95"
+                                      onClick={() => setConfirmKickTarget(member)}
+                                      className="px-1.5 py-0.5 rounded bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-[10px]"
                                     >
                                       <UserX className="w-3 h-3 text-rose-400" />
-                                      <span>เตะ</span>
                                     </button>
                                   )
                                 )}
                               </div>
-                            )}
-
-                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                              ออนไลน์
-                            </span>
-                          </div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-
-                      {members.length <= 1 && (
-                        <div className="p-3 text-center text-xs text-zinc-400 bg-zinc-950/30 rounded-lg border border-dashed border-zinc-800 space-y-1">
-                          <p className="font-semibold text-zinc-300">⏳ กำลังรอเพื่อนคนอื่นเข้าร่วมห้อง...</p>
-                          <p className="text-[11px] text-zinc-500">ส่งลิงก์ห้องหรือ QR Code ด้านบนให้เพื่อนใน Discord ได้เลย!</p>
-                        </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="p-3 bg-zinc-900/60 rounded-xl border border-zinc-800 text-xs text-zinc-400 space-y-1 leading-relaxed">

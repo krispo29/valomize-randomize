@@ -222,7 +222,10 @@ export default async function handler(req: any, res: any) {
             WHEN room_members.is_host = TRUE THEN TRUE 
             ELSE EXCLUDED.is_host 
           END,
-          slot_index = COALESCE(EXCLUDED.slot_index, room_members.slot_index),
+          slot_index = CASE 
+            WHEN EXCLUDED.slot_index IS NOT NULL THEN EXCLUDED.slot_index
+            ELSE room_members.slot_index 
+          END,
           last_seen = NOW();
       `;
 
@@ -342,16 +345,114 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  // 4. PATCH: Transfer host privileges to another member
+  // 4. PATCH: Transfer host privileges OR Set/Swap player slots
   if (req.method === 'PATCH') {
     try {
       const body = typeof req.body === 'string' && req.body ? JSON.parse(req.body) : req.body || {};
       const roomCode = body?.room_code ? String(body.room_code).trim().toUpperCase() : null;
+      const action = body?.action;
+
+      if (!roomCode) {
+        res.status(400).json({ success: false, error: 'room_code is required' });
+        return;
+      }
+
+      // SUB-ACTION A: Set / Swap Member Slot (0-4 for slots, -1 for bench)
+      if (action === 'set_slot') {
+        const targetMemberId = body?.target_member_id ? String(body.target_member_id).trim() : null;
+        const targetSlotIndex = body?.target_slot_index !== undefined && body?.target_slot_index !== null 
+          ? Number(body.target_slot_index) 
+          : null;
+        const sessionId = body?.session_id ? String(body.session_id).trim() : null;
+
+        if (!targetMemberId || targetSlotIndex === null || !sessionId) {
+          res.status(400).json({ success: false, error: 'target_member_id, target_slot_index, and session_id are required' });
+          return;
+        }
+
+        const requesterMemberId = `${roomCode}_${sessionId}`;
+
+        // Authorization: Host can set anyone's slot; a member can set their own slot
+        const requesterRows = await sql`
+          SELECT is_host FROM room_members 
+          WHERE UPPER(room_code) = ${roomCode} AND id = ${requesterMemberId}
+        `;
+        const isHostRequester = requesterRows?.[0]?.is_host === true;
+        const isSelfRequester = requesterMemberId === targetMemberId;
+
+        if (!isHostRequester && !isSelfRequester) {
+          res.status(403).json({ success: false, error: 'เฉพาะหัวห้องหรือเจ้าของสามารถเปลี่ยนสล็อตได้' });
+          return;
+        }
+
+        if (targetSlotIndex < -1 || targetSlotIndex > 4) {
+          res.status(400).json({ success: false, error: 'Invalid slot index (-1 to 4)' });
+          return;
+        }
+
+        // Fetch current slot of target member
+        const currentSlotRows = await sql`SELECT slot_index FROM room_members WHERE id = ${targetMemberId}`;
+        const currentSlot = currentSlotRows?.[0]?.slot_index;
+
+        // If targetSlotIndex is active (0-4), check if another active member is already in that slot
+        if (targetSlotIndex >= 0) {
+          const existingOccupant = await sql`
+            SELECT id FROM room_members 
+            WHERE UPPER(room_code) = ${roomCode} 
+              AND slot_index = ${targetSlotIndex} 
+              AND id != ${targetMemberId}
+              AND last_seen > NOW() - INTERVAL '25 seconds'
+            LIMIT 1;
+          `;
+
+          if (existingOccupant && existingOccupant.length > 0) {
+            const occupantId = existingOccupant[0].id;
+            // Swap: occupant receives target's previous slot (or -1 if target had none)
+            const swapSlot = currentSlot !== null && currentSlot !== undefined && currentSlot >= 0 ? currentSlot : -1;
+            await sql`UPDATE room_members SET slot_index = ${swapSlot} WHERE id = ${occupantId}`;
+          }
+        }
+
+        // Update target member slot
+        await sql`UPDATE room_members SET slot_index = ${targetSlotIndex} WHERE id = ${targetMemberId}`;
+
+        // Return updated active members
+        const rows = await sql`
+          SELECT 
+            id, 
+            room_code, 
+            player_name, 
+            is_host, 
+            slot_index, 
+            EXTRACT(EPOCH FROM last_seen) * 1000 AS last_seen
+          FROM room_members
+          WHERE UPPER(room_code) = ${roomCode}
+            AND last_seen > NOW() - INTERVAL '25 seconds'
+          ORDER BY is_host DESC, created_at ASC
+        `;
+        const members = (rows || []).map((r: any) => ({
+          id: r.id,
+          playerName: r.player_name,
+          isHost: Boolean(r.is_host),
+          slotIndex: r.slot_index !== null ? Number(r.slot_index) : null,
+          lastSeen: Number(r.last_seen),
+        }));
+
+        res.status(200).json({
+          success: true,
+          message: 'Slot updated successfully',
+          roomCode,
+          members,
+        });
+        return;
+      }
+
+      // SUB-ACTION B: Transfer Host
       const targetMemberId = body?.target_member_id ? String(body.target_member_id).trim() : null;
       const currentHostSessionId = body?.current_host_session_id ? String(body.current_host_session_id).trim() : null;
 
-      if (!roomCode || !targetMemberId) {
-        res.status(400).json({ success: false, error: 'room_code and target_member_id are required' });
+      if (!targetMemberId) {
+        res.status(400).json({ success: false, error: 'target_member_id is required' });
         return;
       }
 
@@ -404,7 +505,7 @@ export default async function handler(req: any, res: any) {
         members,
       });
     } catch (err: any) {
-      console.error('Error transferring host in Neon:', err);
+      console.error('Error in room PATCH handler:', err);
       res.status(500).json({ success: false, error: err.message });
     }
     return;

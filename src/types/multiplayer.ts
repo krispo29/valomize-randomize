@@ -43,6 +43,14 @@ export interface MemberKickedPayload {
   kickedBy: string;
 }
 
+export interface SlotUpdatedPayload {
+  targetMemberId: string;
+  targetPlayerName: string;
+  newSlotIndex: number; // 0-4 for slots, -1 for bench
+  swappedMemberId?: string | null;
+  updatedBy: string;
+}
+
 export interface MultiplayerSyncMessage {
   type: 
     | 'STATE_SYNC' 
@@ -52,7 +60,8 @@ export interface MultiplayerSyncMessage {
     | 'MEMBER_JOIN' 
     | 'MEMBER_LEAVE' 
     | 'HOST_TRANSFERRED'
-    | 'MEMBER_KICKED';
+    | 'MEMBER_KICKED'
+    | 'SLOT_UPDATED';
   roomCode: string;
   sender: string;
   timestamp: number;

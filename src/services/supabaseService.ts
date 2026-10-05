@@ -249,6 +249,72 @@ export async function broadcastMemberKicked(
   await broadcastRoomMessage(cleanCode, msg);
 }
 
+export async function updateMemberSlot(
+  roomCode: string,
+  targetMemberId: string,
+  newSlotIndex: number,
+  requesterSessionId: string
+): Promise<{ success: boolean; members?: RoomMember[]; error?: string }> {
+  const cleanCode = sanitizeRoomCode(roomCode);
+  if (!cleanCode || !targetMemberId || !requesterSessionId) {
+    return { success: false, error: 'ข้อมูลไม่ครบถ้วน' };
+  }
+
+  try {
+    const res = await fetch('/api/rooms', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'set_slot',
+        room_code: cleanCode,
+        target_member_id: targetMemberId,
+        target_slot_index: newSlotIndex,
+        session_id: requesterSessionId,
+      }),
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      const sessionId = getPlayerSessionId();
+      const mappedMembers = Array.isArray(data.members)
+        ? data.members.map((m: any) => ({
+            ...m,
+            isSelf: m.id === `${cleanCode}_${sessionId}`,
+          }))
+        : [];
+      return { success: true, members: mappedMembers };
+    }
+    return { success: false, error: data.error || 'ไม่สามารถสลับสล็อตได้' };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function broadcastSlotUpdate(
+  roomCode: string,
+  targetMemberId: string,
+  targetPlayerName: string,
+  newSlotIndex: number,
+  swappedMemberId?: string | null,
+  updatedBy: string = 'System'
+): Promise<void> {
+  const cleanCode = sanitizeRoomCode(roomCode);
+  const msg: MultiplayerSyncMessage = {
+    type: 'SLOT_UPDATED',
+    roomCode: cleanCode,
+    sender: updatedBy,
+    timestamp: Date.now(),
+    payload: {
+      targetMemberId,
+      targetPlayerName,
+      newSlotIndex,
+      swappedMemberId,
+      updatedBy,
+    },
+  };
+  await broadcastRoomMessage(cleanCode, msg);
+}
+
 export async function transferRoomHost(
   roomCode: string,
   targetMemberId: string,

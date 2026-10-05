@@ -7,7 +7,7 @@ import { DEFAULT_FRIENDS, type Agent, type Role, type ValorantMap, MAP_META, MAP
 import { valorantMeta2026, type AgentStrategyProfile } from '@/data/meta';
 import { 
   Shuffle, UserCog, Settings2, Map as MapIcon, Volume2, VolumeX, 
-  BarChart3, Trophy, Globe, Zap, Ban, Keyboard, Tv, Copy, Swords, Dices, Eye 
+  BarChart3, Trophy, Globe, Zap, Ban, Keyboard, Tv, Copy, Swords, Dices, Eye, ArrowUpDown 
 } from 'lucide-react';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
@@ -127,6 +127,7 @@ function App() {
     broadcastMatch,
     transferHost,
     kickMember,
+    changeMemberSlot,
   } = useMultiplayerRoom(
     handleRemoteState,
     (incomingMatch) => {
@@ -154,6 +155,14 @@ function App() {
     () => {
       setToastMessage(`⚠️ คุณถูกหัวห้องเตะออกจากห้อง`);
       setTimeout(() => setToastMessage(null), 5000);
+    },
+    (slotPayload) => {
+      setToastMessage(
+        slotPayload.newSlotIndex === -1 
+          ? `👥 ${slotPayload.targetPlayerName} ย้ายไปเป็นผู้ชม (ตัวสำรอง)`
+          : `🎮 ${slotPayload.targetPlayerName} ย้ายไป Slot ${slotPayload.newSlotIndex + 1}`
+      );
+      setTimeout(() => setToastMessage(null), 3000);
     }
   );
 
@@ -229,12 +238,15 @@ function App() {
     playInstantRoll, playClick, isMuted, toggleMute 
   } = useSoundManager();
 
-  // Active Friends: When inside a multiplayer room, player slots strictly reflect actual room members.
-  // Default names (e.g. Sunny, Nut, Do) are never displayed in empty room slots.
-  const activeFriends = useMemo(() => {
+  // Active Friends & Bench: When inside a multiplayer room, player slots strictly reflect actual room members and their chosen slot.
+  const { activeFriends, benchMembers, isSpectator } = useMemo(() => {
     if (!isInRoom) {
-      return friends;
+      return { activeFriends: friends, benchMembers: [], isSpectator: false };
     }
+
+    const slots: (string | null)[] = [null, null, null, null, null];
+    const unslotted: typeof roomMembers = [];
+    const bench: typeof roomMembers = [];
 
     const sortedMembers = [...roomMembers].sort((a, b) => {
       if (a.isHost && !b.isHost) return -1;
@@ -242,28 +254,40 @@ function App() {
       return 0;
     });
 
-    const result: string[] = [];
-
-    // If room members list hasn't resolved yet, start with current user in slot 0
-    if (sortedMembers.length === 0) {
-      result.push(myPlayerName || 'Host');
-    } else {
-      sortedMembers.forEach((m) => {
-        if (result.length < 5) {
-          const name = m.isSelf ? (myPlayerName || m.playerName) : m.playerName;
-          if (name) {
-            result.push(name);
-          }
+    sortedMembers.forEach((m) => {
+      if (m.slotIndex === -1) {
+        bench.push(m);
+      } else if (m.slotIndex !== undefined && m.slotIndex !== null && m.slotIndex >= 0 && m.slotIndex < 5) {
+        if (!slots[m.slotIndex]) {
+          slots[m.slotIndex] = m.isSelf ? (myPlayerName || m.playerName) : m.playerName;
+        } else {
+          unslotted.push(m);
         }
-      });
+      } else {
+        unslotted.push(m);
+      }
+    });
+
+    for (let i = 0; i < 5; i++) {
+      if (!slots[i] && unslotted.length > 0) {
+        const next = unslotted.shift()!;
+        slots[i] = next.isSelf ? (myPlayerName || next.playerName) : next.playerName;
+      }
+    }
+    bench.push(...unslotted);
+
+    if (sortedMembers.length === 0) {
+      slots[0] = myPlayerName || 'Host';
     }
 
-    // Unfilled slots are marked as waiting, not with fake default names
-    while (result.length < 5) {
-      result.push('รอผู้เล่น...');
-    }
+    const friendsList = slots.map((s) => s || 'รอผู้เล่น...');
+    const userIsSpectator = bench.some((m) => m.isSelf);
 
-    return result;
+    return {
+      activeFriends: friendsList,
+      benchMembers: bench,
+      isSpectator: userIsSpectator,
+    };
   }, [isInRoom, friends, roomMembers, myPlayerName]);
 
   // Initialize
@@ -1458,6 +1482,42 @@ function App() {
                 )}
             </AnimatePresence>
 
+            {/* Multiplayer Spectator / Bench Bar */}
+            {isInRoom && (isSpectator || benchMembers.length > 0) && (
+              <div className="mb-4 flex flex-col sm:flex-row items-center justify-between gap-2.5 p-3 bg-zinc-900/80 border border-zinc-800 rounded-xl backdrop-blur-md shadow-lg">
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  {isSpectator ? (
+                    <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/15 border border-amber-500/30 text-amber-300 rounded-full font-bold">
+                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                      <span>คุณอยู่ในโหมดผู้ชม (ตัวสำรอง)</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 rounded-full font-bold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span>ตัวจริง 5 คน</span>
+                    </div>
+                  )}
+
+                  {benchMembers.length > 0 && (
+                    <div className="text-zinc-400 flex items-center gap-1.5 text-xs">
+                      <span className="text-[10px] font-bold text-zinc-500 uppercase">ตัวสำรอง ({benchMembers.length}):</span>
+                      <span className="text-zinc-300 font-medium">
+                        {benchMembers.map((bm) => bm.playerName).join(', ')}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowMultiplayerModal(true)}
+                  className="text-xs text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1 transition"
+                >
+                  <ArrowUpDown className="w-3.5 h-3.5" /> สลับ Slot / ตัวสำรอง
+                </button>
+              </div>
+            )}
+
             {/* The Grid (Players) */}
             <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 justify-items-center transition-opacity duration-500 ${(phase === 'GATHERING' || phase === 'SHUFFLING') ? 'opacity-30' : 'opacity-100'}`}>
                 {activeFriends.map((friendName, index) => {
@@ -1629,6 +1689,17 @@ function App() {
             } else {
               setToastMessage(`❌ เกิดข้อผิดพลาด: ${res.error || 'ไม่สามารถเตะสมาชิกได้'}`);
               setTimeout(() => setToastMessage(null), 3500);
+            }
+          }}
+          onChangeSlot={async (targetMemberId, newSlotIndex) => {
+            const res = await changeMemberSlot(targetMemberId, newSlotIndex);
+            if (res.success) {
+              playClick();
+              setToastMessage(newSlotIndex === -1 ? '👥 ย้ายไปยังตัวสำรองแล้ว' : `🎮 ย้ายไปยัง Slot ${newSlotIndex + 1} แล้ว`);
+              setTimeout(() => setToastMessage(null), 3000);
+            } else {
+              setToastMessage(`❌ เกิดข้อผิดพลาด: ${res.error || 'สลับสล็อตไม่สำเร็จ'}`);
+              setTimeout(() => setToastMessage(null), 3000);
             }
           }}
         />

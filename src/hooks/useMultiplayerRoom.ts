@@ -4,7 +4,8 @@ import {
   type MultiplayerSyncMessage, 
   type RoomMember, 
   type HostTransferredPayload,
-  type MemberKickedPayload 
+  type MemberKickedPayload,
+  type SlotUpdatedPayload,
 } from '@/types/multiplayer';
 import { type MatchRecord } from '@/types/stats';
 import {
@@ -17,6 +18,8 @@ import {
   sendBeaconLeave,
   kickRoomMember,
   broadcastMemberKicked,
+  updateMemberSlot,
+  broadcastSlotUpdate,
   getPlayerSessionId,
   getSavedDisplayName,
   setSavedDisplayName,
@@ -35,7 +38,8 @@ export function useMultiplayerRoom(
   onMemberJoined?: (member: RoomMember) => void,
   onHostTransferred?: (payload: HostTransferredPayload) => void,
   onMemberKicked?: (payload: MemberKickedPayload) => void,
-  onSelfKicked?: () => void
+  onSelfKicked?: () => void,
+  onSlotUpdated?: (payload: SlotUpdatedPayload) => void
 ) {
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [isHost, setIsHost] = useState<boolean>(() => {
@@ -124,9 +128,19 @@ export function useMultiplayerRoom(
             setMembers((prev) => prev.filter((m) => m.id !== payload.kickedMemberId));
           }
         }
+      } else if (msg.type === 'SLOT_UPDATED') {
+        const payload = msg.payload as SlotUpdatedPayload;
+        fetchRoomMembers(msg.roomCode, sessionIdRef.current).then((res) => {
+          if (res && Array.isArray(res.members) && res.members.length > 0) {
+            setMembers(res.members);
+          }
+        });
+        if (payload) {
+          onSlotUpdated?.(payload);
+        }
       }
     },
-    [onRemoteStateReceived, onRemoteMatchReceived, onHostTransferred, onMemberKicked, onSelfKicked, isHost]
+    [onRemoteStateReceived, onRemoteMatchReceived, onHostTransferred, onMemberKicked, onSelfKicked, onSlotUpdated, isHost]
   );
 
   // Auto-connect if room query parameter exists
@@ -426,6 +440,45 @@ export function useMultiplayerRoom(
     [roomCode, isHost, myPlayerName]
   );
 
+  const changeMemberSlot = useCallback(
+    async (
+      targetMemberId: string,
+      newSlotIndex: number
+    ): Promise<{ success: boolean; error?: string }> => {
+      if (!roomCode) {
+        return { success: false, error: 'ไม่ได้อยู่ในห้อง' };
+      }
+
+      const target = members.find((m) => m.id === targetMemberId);
+      const targetName = target ? target.playerName : 'ผู้เล่น';
+
+      const res = await updateMemberSlot(
+        roomCode,
+        targetMemberId,
+        newSlotIndex,
+        sessionIdRef.current
+      );
+
+      if (res.success) {
+        await broadcastSlotUpdate(
+          roomCode,
+          targetMemberId,
+          targetName,
+          newSlotIndex,
+          null,
+          myPlayerName
+        );
+
+        if (Array.isArray(res.members)) {
+          setMembers(res.members);
+        }
+        return { success: true };
+      }
+      return { success: false, error: res.error };
+    },
+    [roomCode, members, myPlayerName]
+  );
+
   return {
     roomCode,
     isHost,
@@ -445,5 +498,6 @@ export function useMultiplayerRoom(
     broadcastMatch,
     transferHost,
     kickMember,
+    changeMemberSlot,
   };
 }
