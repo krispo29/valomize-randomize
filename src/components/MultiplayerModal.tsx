@@ -19,6 +19,7 @@ import {
   Edit3,
   Users,
   Smile,
+  UserX,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { sanitizeRoomCode } from '@/services/supabaseService';
@@ -45,6 +46,7 @@ interface MultiplayerModalProps {
   myPlayerName?: string;
   onUpdatePlayerName?: (name: string) => void;
   onTransferHost?: (targetMember: RoomMember) => Promise<void> | void;
+  onKickMember?: (targetMember: RoomMember) => Promise<void> | void;
 }
 
 export function MultiplayerModal({
@@ -60,6 +62,7 @@ export function MultiplayerModal({
   myPlayerName = 'Player',
   onUpdatePlayerName,
   onTransferHost,
+  onKickMember,
 }: MultiplayerModalProps) {
   const [inputCode, setInputCode] = useState<string>('');
   const [customHostCode, setCustomHostCode] = useState<string>('');
@@ -71,6 +74,8 @@ export function MultiplayerModal({
   const [tempName, setTempName] = useState<string>(myPlayerName);
   const [confirmTransferTarget, setConfirmTransferTarget] = useState<RoomMember | null>(null);
   const [isTransferring, setIsTransferring] = useState<boolean>(false);
+  const [confirmKickTarget, setConfirmKickTarget] = useState<RoomMember | null>(null);
+  const [isKicking, setIsKicking] = useState<boolean>(false);
 
   const handleConfirmTransfer = async (member: RoomMember) => {
     if (!onTransferHost) return;
@@ -82,6 +87,19 @@ export function MultiplayerModal({
       // ignore
     } finally {
       setIsTransferring(false);
+    }
+  };
+
+  const handleConfirmKick = async (member: RoomMember) => {
+    if (!onKickMember) return;
+    setIsKicking(true);
+    try {
+      await onKickMember(member);
+      setConfirmKickTarget(null);
+    } catch {
+      // ignore
+    } finally {
+      setIsKicking(false);
     }
   };
 
@@ -449,39 +467,85 @@ export function MultiplayerModal({
                           </div>
 
                           <div className="flex items-center gap-2">
-                            {/* Transfer Host Action for Host */}
-                            {isHost && !member.isSelf && !member.isHost && onTransferHost && (
-                              confirmTransferTarget?.id === member.id ? (
-                                <div className="flex items-center gap-1 animate-in fade-in duration-150">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleConfirmTransfer(member)}
-                                    disabled={isTransferring}
-                                    className="px-2 py-1 bg-amber-500 hover:bg-amber-400 text-black text-[10px] font-black rounded shadow transition active:scale-95 flex items-center gap-1"
-                                  >
-                                    <Crown className="w-2.5 h-2.5" />
-                                    <span>{isTransferring ? 'กำลังโอน...' : 'ยืนยัน'}</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setConfirmTransferTarget(null)}
-                                    disabled={isTransferring}
-                                    className="px-1.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] rounded transition"
-                                  >
-                                    ยกเลิก
-                                  </button>
-                                </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => setConfirmTransferTarget(member)}
-                                  title={`โอนสิทธิ์หัวห้องให้ ${member.playerName}`}
-                                  className="px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[10px] font-bold flex items-center gap-1 transition active:scale-95"
-                                >
-                                  <Crown className="w-3 h-3 text-amber-400" />
-                                  <span>มอบสิทธิ์โฮสต์</span>
-                                </button>
-                              )
+                            {/* Host Actions: Transfer Host & Kick Member */}
+                            {isHost && !member.isSelf && !member.isHost && (
+                              <div className="flex items-center gap-1.5">
+                                {/* Transfer Host Button */}
+                                {onTransferHost && (
+                                  confirmTransferTarget?.id === member.id ? (
+                                    <div className="flex items-center gap-1 animate-in fade-in duration-150">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleConfirmTransfer(member)}
+                                        disabled={isTransferring}
+                                        className="px-2 py-1 bg-amber-500 hover:bg-amber-400 text-black text-[10px] font-black rounded shadow transition active:scale-95 flex items-center gap-1"
+                                      >
+                                        <Crown className="w-2.5 h-2.5" />
+                                        <span>{isTransferring ? 'กำลังโอน...' : 'ยืนยัน'}</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setConfirmTransferTarget(null)}
+                                        disabled={isTransferring}
+                                        className="px-1.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] rounded transition"
+                                      >
+                                        ยกเลิก
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setConfirmTransferTarget(member);
+                                        setConfirmKickTarget(null);
+                                      }}
+                                      title={`โอนสิทธิ์หัวห้องให้ ${member.playerName}`}
+                                      className="px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[10px] font-bold flex items-center gap-1 transition active:scale-95"
+                                    >
+                                      <Crown className="w-3 h-3 text-amber-400" />
+                                      <span>มอบโฮสต์</span>
+                                    </button>
+                                  )
+                                )}
+
+                                {/* Kick Member Button */}
+                                {onKickMember && (
+                                  confirmKickTarget?.id === member.id ? (
+                                    <div className="flex items-center gap-1 animate-in fade-in duration-150">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleConfirmKick(member)}
+                                        disabled={isKicking}
+                                        className="px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-black rounded shadow transition active:scale-95 flex items-center gap-1"
+                                      >
+                                        <UserX className="w-2.5 h-2.5" />
+                                        <span>{isKicking ? 'กำลังเตะ...' : 'ยืนยัน'}</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setConfirmKickTarget(null)}
+                                        disabled={isKicking}
+                                        className="px-1.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] rounded transition"
+                                      >
+                                        ยกเลิก
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setConfirmKickTarget(member);
+                                        setConfirmTransferTarget(null);
+                                      }}
+                                      title={`เตะ ${member.playerName} ออกจากห้อง`}
+                                      className="px-2 py-1 rounded bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-[10px] font-bold flex items-center gap-1 transition active:scale-95"
+                                    >
+                                      <UserX className="w-3 h-3 text-rose-400" />
+                                      <span>เตะ</span>
+                                    </button>
+                                  )
+                                )}
+                              </div>
                             )}
 
                             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">

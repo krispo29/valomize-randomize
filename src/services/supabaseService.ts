@@ -157,10 +157,96 @@ export async function leaveRoomPresence(roomCode: string, sessionId: string): Pr
         room_code: cleanCode,
         session_id: sessionId,
       }),
+      keepalive: true,
     });
   } catch {
     // ignore
   }
+}
+
+export function sendBeaconLeave(roomCode: string, sessionId: string): void {
+  const cleanCode = sanitizeRoomCode(roomCode);
+  if (!cleanCode || !sessionId) return;
+
+  try {
+    const payload = JSON.stringify({
+      action: 'beacon_leave',
+      room_code: cleanCode,
+      session_id: sessionId,
+    });
+    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+      const blob = new Blob([payload], { type: 'application/json' });
+      navigator.sendBeacon('/api/rooms', blob);
+    } else {
+      fetch('/api/rooms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        keepalive: true,
+      }).catch(() => {});
+    }
+  } catch {
+    // ignore
+  }
+}
+
+export async function kickRoomMember(
+  roomCode: string,
+  targetMemberId: string,
+  hostSessionId: string
+): Promise<{ success: boolean; members?: RoomMember[]; error?: string }> {
+  const cleanCode = sanitizeRoomCode(roomCode);
+  if (!cleanCode || !targetMemberId || !hostSessionId) {
+    return { success: false, error: 'ข้อมูลไม่ครบถ้วน' };
+  }
+
+  try {
+    const res = await fetch('/api/rooms', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        room_code: cleanCode,
+        target_member_id: targetMemberId,
+        host_session_id: hostSessionId,
+      }),
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      const sessionId = getPlayerSessionId();
+      const mappedMembers = Array.isArray(data.members)
+        ? data.members.map((m: any) => ({
+            ...m,
+            isSelf: m.id === `${cleanCode}_${sessionId}`,
+          }))
+        : [];
+      return { success: true, members: mappedMembers };
+    }
+    return { success: false, error: data.error || 'ไม่สามารถเตะสมาชิกได้' };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function broadcastMemberKicked(
+  roomCode: string,
+  kickedMemberId: string,
+  kickedPlayerName: string,
+  hostName: string
+): Promise<void> {
+  const cleanCode = sanitizeRoomCode(roomCode);
+  const msg: MultiplayerSyncMessage = {
+    type: 'MEMBER_KICKED',
+    roomCode: cleanCode,
+    sender: hostName,
+    timestamp: Date.now(),
+    payload: {
+      kickedMemberId,
+      kickedPlayerName,
+      kickedBy: hostName,
+    },
+  };
+  await broadcastRoomMessage(cleanCode, msg);
 }
 
 export async function transferRoomHost(

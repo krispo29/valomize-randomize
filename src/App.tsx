@@ -126,6 +126,7 @@ function App() {
     broadcastState,
     broadcastMatch,
     transferHost,
+    kickMember,
   } = useMultiplayerRoom(
     handleRemoteState,
     (incomingMatch) => {
@@ -145,6 +146,14 @@ function App() {
         playClick();
       }
       setTimeout(() => setToastMessage(null), 4500);
+    },
+    (kickedPayload) => {
+      setToastMessage(`👢 ${kickedPayload.kickedPlayerName} ถูกหัวห้องเตะออกจากห้อง`);
+      setTimeout(() => setToastMessage(null), 3500);
+    },
+    () => {
+      setToastMessage(`⚠️ คุณถูกหัวห้องเตะออกจากห้อง`);
+      setTimeout(() => setToastMessage(null), 5000);
     }
   );
 
@@ -1608,6 +1617,17 @@ function App() {
               setTimeout(() => setToastMessage(null), 3500);
             } else {
               setToastMessage(`❌ เกิดข้อผิดพลาด: ${res.error || 'โอนสิทธิ์ไม่สำเร็จ'}`);
+              setTimeout(() => setToastMessage(null), 3500);
+            }
+          }}
+          onKickMember={async (targetMember) => {
+            const res = await kickMember(targetMember);
+            if (res.success) {
+              setToastMessage(`👢 เตะ ${targetMember.playerName} ออกจากห้องแล้ว`);
+              playClick();
+              setTimeout(() => setToastMessage(null), 3500);
+            } else {
+              setToastMessage(`❌ เกิดข้อผิดพลาด: ${res.error || 'ไม่สามารถเตะสมาชิกได้'}`);
               setTimeout(() => setToastMessage(null), 3500);
             }
           }}

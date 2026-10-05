@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { type RoomState, type MultiplayerSyncMessage, type RoomMember, type HostTransferredPayload } from '@/types/multiplayer';
+import { 
+  type RoomState, 
+  type MultiplayerSyncMessage, 
+  type RoomMember, 
+  type HostTransferredPayload,
+  type MemberKickedPayload 
+} from '@/types/multiplayer';
 import { type MatchRecord } from '@/types/stats';
 import {
   subscribeToRoom,
@@ -8,6 +14,9 @@ import {
   sanitizeRoomCode,
   sendRoomHeartbeat,
   leaveRoomPresence,
+  sendBeaconLeave,
+  kickRoomMember,
+  broadcastMemberKicked,
   getPlayerSessionId,
   getSavedDisplayName,
   setSavedDisplayName,
@@ -24,7 +33,9 @@ export function useMultiplayerRoom(
   onRemoteStateReceived?: (state: RoomState) => void,
   onRemoteMatchReceived?: (match: MatchRecord) => void,
   onMemberJoined?: (member: RoomMember) => void,
-  onHostTransferred?: (payload: HostTransferredPayload) => void
+  onHostTransferred?: (payload: HostTransferredPayload) => void,
+  onMemberKicked?: (payload: MemberKickedPayload) => void,
+  onSelfKicked?: () => void
 ) {
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [isHost, setIsHost] = useState<boolean>(() => {
@@ -65,6 +76,7 @@ export function useMultiplayerRoom(
   const prevMemberIdsRef = useRef<Set<string>>(new Set());
 
   const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
+  const leaveRoomRef = useRef<() => void>(() => {});
 
   const handleIncomingMessage = useCallback(
     (msg: MultiplayerSyncMessage) => {
@@ -100,9 +112,21 @@ export function useMultiplayerRoom(
             }
           });
         }
+      } else if (msg.type === 'MEMBER_KICKED') {
+        const payload = msg.payload as MemberKickedPayload;
+        if (payload) {
+          const myId = `${sanitizeRoomCode(msg.roomCode)}_${sessionIdRef.current}`;
+          if (payload.kickedMemberId === myId) {
+            leaveRoomRef.current();
+            onSelfKicked?.();
+          } else {
+            onMemberKicked?.(payload);
+            setMembers((prev) => prev.filter((m) => m.id !== payload.kickedMemberId));
+          }
+        }
       }
     },
-    [onRemoteStateReceived, onRemoteMatchReceived, onHostTransferred, isHost]
+    [onRemoteStateReceived, onRemoteMatchReceived, onHostTransferred, onMemberKicked, onSelfKicked, isHost]
   );
 
   // Auto-connect if room query parameter exists
@@ -300,6 +324,28 @@ export function useMultiplayerRoom(
     }
   }, [roomCode]);
 
+  leaveRoomRef.current = leaveRoom;
+
+  // Instant disconnect via Beacon API on page unload/close (for guests)
+  useEffect(() => {
+    if (!roomCode) return;
+
+    const handleUnload = () => {
+      // If host, we do NOT delete immediately so F5 refresh preserves host status
+      if (!isHost) {
+        sendBeaconLeave(roomCode, sessionIdRef.current);
+      }
+    };
+
+    window.addEventListener('pagehide', handleUnload);
+    window.addEventListener('beforeunload', handleUnload);
+
+    return () => {
+      window.removeEventListener('pagehide', handleUnload);
+      window.removeEventListener('beforeunload', handleUnload);
+    };
+  }, [roomCode, isHost]);
+
   const broadcastState = useCallback(
     async (state: RoomState) => {
       if (!roomCode || !isHost) return;
@@ -353,6 +399,33 @@ export function useMultiplayerRoom(
     [roomCode, isHost, myPlayerName]
   );
 
+  const kickMember = useCallback(
+    async (targetMember: RoomMember): Promise<{ success: boolean; error?: string }> => {
+      if (!roomCode || !isHost) {
+        return { success: false, error: 'เฉพาะหัวห้องเท่านั้นที่มีสิทธิ์เตะสมาชิก' };
+      }
+
+      const res = await kickRoomMember(roomCode, targetMember.id, sessionIdRef.current);
+      if (res.success) {
+        await broadcastMemberKicked(
+          roomCode,
+          targetMember.id,
+          targetMember.playerName,
+          myPlayerName
+        );
+
+        if (Array.isArray(res.members)) {
+          setMembers(res.members);
+        } else {
+          setMembers((prev) => prev.filter((m) => m.id !== targetMember.id));
+        }
+        return { success: true };
+      }
+      return { success: false, error: res.error };
+    },
+    [roomCode, isHost, myPlayerName]
+  );
+
   return {
     roomCode,
     isHost,
@@ -371,5 +444,6 @@ export function useMultiplayerRoom(
     broadcastState,
     broadcastMatch,
     transferHost,
+    kickMember,
   };
 }

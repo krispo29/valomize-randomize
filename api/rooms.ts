@@ -170,7 +170,7 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  // 2. POST: Register or Heartbeat member presence
+  // 2. POST: Register or Heartbeat member presence (or beacon leave)
   if (req.method === 'POST') {
     try {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
@@ -179,9 +179,19 @@ export default async function handler(req: any, res: any) {
       const sessionId = body?.session_id ? String(body.session_id).trim() : null;
       const isHost = Boolean(body?.is_host);
       const slotIndex = body?.slot_index !== undefined && body?.slot_index !== null ? Number(body.slot_index) : null;
+      const action = body?.action;
 
       if (!roomCode || !sessionId) {
         res.status(400).json({ success: false, error: 'room_code and session_id are required' });
+        return;
+      }
+
+      // Fast leave via navigator.sendBeacon
+      if (action === 'leave' || action === 'beacon_leave') {
+        const memberId = `${roomCode}_${sessionId}`;
+        await sql`DELETE FROM room_members WHERE id = ${memberId}`;
+        await checkAndMigrateHost(sql, roomCode);
+        res.status(200).json({ success: true, message: 'Member left via beacon' });
         return;
       }
 
@@ -258,16 +268,70 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  // 3. DELETE: Explicitly leave room
+  // 3. DELETE: Explicitly leave room OR Kick player by Host
   if (req.method === 'DELETE') {
     try {
       const body = typeof req.body === 'string' && req.body ? JSON.parse(req.body) : req.body || {};
       const roomCode = (req.query?.room_code || body.room_code || '').toString().trim().toUpperCase();
       const sessionId = (req.query?.session_id || body.session_id || '').toString().trim();
+      const targetMemberId = (req.query?.target_member_id || body.target_member_id || '').toString().trim();
+      const hostSessionId = (req.query?.host_session_id || body.host_session_id || '').toString().trim();
 
-      if (roomCode && sessionId) {
+      if (!roomCode) {
+        res.status(400).json({ success: false, error: 'room_code is required' });
+        return;
+      }
+
+      // Scenario A: Kick player by Host
+      if (targetMemberId && hostSessionId) {
+        const hostMemberId = `${roomCode}_${hostSessionId}`;
+        const hostCheck = await sql`
+          SELECT is_host FROM room_members 
+          WHERE UPPER(room_code) = ${roomCode} AND id = ${hostMemberId}
+        `;
+        if (!hostCheck || hostCheck.length === 0 || !hostCheck[0].is_host) {
+          res.status(403).json({ success: false, error: 'เฉพาะหัวห้องเท่านั้นที่มีสิทธิ์เตะสมาชิก' });
+          return;
+        }
+
+        if (targetMemberId === hostMemberId) {
+          res.status(400).json({ success: false, error: 'หัวห้องไม่สามารถเตะตัวเองได้ กรุณาโอนสิทธิ์หรือออกจากห้อง' });
+          return;
+        }
+
+        await sql`DELETE FROM room_members WHERE id = ${targetMemberId} AND UPPER(room_code) = ${roomCode}`;
+
+        // Return updated active members
+        const rows = await sql`
+          SELECT 
+            id, 
+            room_code, 
+            player_name, 
+            is_host, 
+            slot_index, 
+            EXTRACT(EPOCH FROM last_seen) * 1000 AS last_seen
+          FROM room_members
+          WHERE UPPER(room_code) = ${roomCode}
+            AND last_seen > NOW() - INTERVAL '25 seconds'
+          ORDER BY is_host DESC, created_at ASC
+        `;
+        const members = (rows || []).map((r: any) => ({
+          id: r.id,
+          playerName: r.player_name,
+          isHost: Boolean(r.is_host),
+          slotIndex: r.slot_index !== null ? Number(r.slot_index) : null,
+          lastSeen: Number(r.last_seen),
+        }));
+
+        res.status(200).json({ success: true, message: 'Member kicked', members });
+        return;
+      }
+
+      // Scenario B: Explicit self leave
+      if (sessionId) {
         const memberId = `${roomCode}_${sessionId}`;
         await sql`DELETE FROM room_members WHERE id = ${memberId}`;
+        await checkAndMigrateHost(sql, roomCode);
       }
 
       res.status(200).json({ success: true, message: 'Member removed from room' });

@@ -37,10 +37,25 @@ export interface HostTransferredPayload {
   previousHostName: string;
 }
 
+export interface MemberKickedPayload {
+  kickedMemberId: string;
+  kickedPlayerName: string;
+  kickedBy: string;
+}
+
 export interface MultiplayerSyncMessage {
-  type: 'STATE_SYNC' | 'ROLL_TRIGGER' | 'MATCH_RECORDED' | 'ROOM_PING' | 'MEMBER_JOIN' | 'MEMBER_LEAVE' | 'HOST_TRANSFERRED';
+  type: 
+    | 'STATE_SYNC' 
+    | 'ROLL_TRIGGER' 
+    | 'MATCH_RECORDED' 
+    | 'ROOM_PING' 
+    | 'MEMBER_JOIN' 
+    | 'MEMBER_LEAVE' 
+    | 'HOST_TRANSFERRED'
+    | 'MEMBER_KICKED';
   roomCode: string;
   sender: string;
   timestamp: number;
   payload: unknown;
 }
+
