@@ -124,15 +124,28 @@ export default async function handler(req: any, res: any) {
 
       const memberId = `${roomCode}_${sessionId}`;
 
+      // Enforce single host: check if another active member is already the host of this room
+      const activeHostRows = await sql`
+        SELECT id FROM room_members 
+        WHERE UPPER(room_code) = ${roomCode} 
+          AND is_host = TRUE 
+          AND id != ${memberId} 
+          AND last_seen > NOW() - INTERVAL '25 seconds'
+        LIMIT 1;
+      `;
+      const anotherHostExists = Array.isArray(activeHostRows) && activeHostRows.length > 0;
+      const canBeHost = isHost && !anotherHostExists;
+
       await sql`
         INSERT INTO room_members (
           id, room_code, player_name, is_host, slot_index, last_seen
         ) VALUES (
-          ${memberId}, ${roomCode}, ${playerName}, ${isHost}, ${slotIndex}, NOW()
+          ${memberId}, ${roomCode}, ${playerName}, ${canBeHost}, ${slotIndex}, NOW()
         )
         ON CONFLICT (id) DO UPDATE SET
           player_name = EXCLUDED.player_name,
           is_host = CASE 
+            WHEN ${anotherHostExists} THEN FALSE
             WHEN room_members.is_host = TRUE THEN TRUE 
             ELSE EXCLUDED.is_host 
           END,

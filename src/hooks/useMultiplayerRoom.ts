@@ -88,7 +88,7 @@ export function useMultiplayerRoom(
           if (payload.newHostId === myId) {
             setIsHost(true);
             saveRoomHost(msg.roomCode, true);
-          } else if (isHost) {
+          } else {
             setIsHost(false);
             removeRoomHost(msg.roomCode);
           }

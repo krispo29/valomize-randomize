@@ -11,7 +11,7 @@ export function isRoomHostStored(roomCode: string): boolean {
   if (!roomCode) return false;
   const clean = sanitizeRoomCode(roomCode);
   try {
-    const raw = localStorage.getItem(HOST_ROOMS_KEY);
+    const raw = sessionStorage.getItem(HOST_ROOMS_KEY);
     if (!raw) return false;
     const hosted: string[] = JSON.parse(raw);
     return Array.isArray(hosted) && hosted.includes(clean);
@@ -24,7 +24,7 @@ export function saveRoomHost(roomCode: string, isHost: boolean): void {
   if (!roomCode) return;
   const clean = sanitizeRoomCode(roomCode);
   try {
-    const raw = localStorage.getItem(HOST_ROOMS_KEY);
+    const raw = sessionStorage.getItem(HOST_ROOMS_KEY);
     let hosted: string[] = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(hosted)) hosted = [];
     if (isHost) {
@@ -34,7 +34,8 @@ export function saveRoomHost(roomCode: string, isHost: boolean): void {
     } else {
       hosted = hosted.filter((c) => c !== clean);
     }
-    localStorage.setItem(HOST_ROOMS_KEY, JSON.stringify(hosted));
+    sessionStorage.setItem(HOST_ROOMS_KEY, JSON.stringify(hosted));
+    localStorage.removeItem(HOST_ROOMS_KEY);
   } catch {
     // ignore
   }
@@ -47,10 +48,10 @@ export function removeRoomHost(roomCode: string): void {
 
 export function getPlayerSessionId(): string {
   try {
-    let id = localStorage.getItem(SESSION_ID_KEY);
+    let id = sessionStorage.getItem(SESSION_ID_KEY);
     if (!id) {
       id = 'user_' + Math.random().toString(36).substring(2, 9);
-      localStorage.setItem(SESSION_ID_KEY, id);
+      sessionStorage.setItem(SESSION_ID_KEY, id);
     }
     return id;
   } catch {
