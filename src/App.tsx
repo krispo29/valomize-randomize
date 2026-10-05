@@ -16,7 +16,7 @@ import { useMatchStats } from '@/hooks/useMatchStats';
 import { useValorantData } from '@/hooks/useValorantData';
 import { usePlayerProfiles } from '@/hooks/usePlayerProfiles';
 import { useMultiplayerRoom } from '@/hooks/useMultiplayerRoom';
-import { type RoomState } from '@/types/multiplayer';
+import { type RoomState, type EmojiReactionPayload } from '@/types/multiplayer';
 import { type MatchRecord } from '@/types/stats';
 import { saveMatchToDatabase, sanitizeRoomCode, getPlayerSessionId } from '@/services/supabaseService';
 import { VictoryScreen } from '@/components/VictoryScreen';
@@ -31,6 +31,7 @@ import { KeyboardShortcutsModal } from '@/components/KeyboardShortcutsModal';
 import { MapVetoModal } from '@/components/MapVetoModal';
 import { GunChallengeModal } from '@/components/GunChallengeModal';
 import { InAppBrowserBanner } from '@/components/InAppBrowserBanner';
+import { FloatingEmojiReactions } from '@/components/FloatingEmojiReactions';
 import { generateTacticalBrief } from '@/utils/tacticalBrief';
 import jettLogo from '@/assets/jett_logo.png';
 
@@ -111,6 +112,7 @@ function App() {
   };
 
   const [memberToast, setMemberToast] = useState<string | null>(null);
+  const [latestReaction, setLatestReaction] = useState<EmojiReactionPayload | null>(null);
 
   const {
     roomCode,
@@ -129,6 +131,7 @@ function App() {
     transferHost,
     kickMember,
     changeMemberSlot,
+    sendEmojiReaction,
   } = useMultiplayerRoom(
     handleRemoteState,
     (incomingMatch) => {
@@ -164,6 +167,9 @@ function App() {
           : `🎮 ${slotPayload.targetPlayerName} ย้ายไป Slot ${slotPayload.newSlotIndex + 1}`
       );
       setTimeout(() => setToastMessage(null), 3000);
+    },
+    (reactionPayload) => {
+      setLatestReaction(reactionPayload);
     }
   );
 
@@ -320,6 +326,47 @@ function App() {
     const text = `VALOMIZE ${mapStr}> ${parts.join(' | ')}`;
     navigator.clipboard.writeText(text);
     setToastMessage('📋 คัดลอกแชทในเกมเรียบร้อย! (กด Ctrl+V ใน Valorant ได้เลย)');
+    setTimeout(() => setToastMessage(null), 2500);
+  };
+
+  // Quick 1-click Discord Markdown copy helper
+  const copyDiscordRoster = (assignmentsToUse = assignmentsByIndex) => {
+    playClick();
+    const roleIcons: Record<string, string> = {
+      Duelist: '⚔️',
+      Initiator: '🎯',
+      Controller: '💨',
+      Sentinel: '🛡️',
+    };
+
+    const mapHeader = selectedMap ? ` — 🗺️ **[${selectedMap.toUpperCase()}]**` : '';
+    const lines = [
+      `🎮 **VALOMIZE SQUAD LINEUP**${mapHeader}`,
+      '──────────────────────────────',
+    ];
+
+    activeFriends.forEach((p, idx) => {
+      const agent = assignmentsToUse[idx];
+      const status = playerStatuses[idx];
+      const tag = status === 'MVP' ? ' 👑 [MVP]' : status === 'BOTTOM' ? ' 💀 [Bot Frag]' : '';
+      const displayName = p.startsWith('รอ') ? `Slot ${idx + 1}` : p;
+      if (agent) {
+        const icon = roleIcons[agent.role] || '🔹';
+        lines.push(`${icon} **${displayName}:** ${agent.name} *(${agent.role})*${tag}`);
+      } else {
+        lines.push(`🎲 **${displayName}:** Random Agent${tag}`);
+      }
+    });
+
+    lines.push('──────────────────────────────');
+    if (roomCode) {
+      lines.push(`🔗 **เข้าห้องดูสด:** https://valomize-randomize.vercel.app/?room=${roomCode}`);
+    } else {
+      lines.push(`🎲 *สุ่มโดย Valomize Randomizer*`);
+    }
+
+    navigator.clipboard.writeText(lines.join('\n'));
+    setToastMessage('💬 คัดลอกฟอร์แมต Discord เรียบร้อย! (วางในแชทได้ทันที)');
     setTimeout(() => setToastMessage(null), 2500);
   };
 
@@ -1089,15 +1136,26 @@ function App() {
 
             {/* Copy in-game chat string shortcut button */}
             {Object.keys(assignmentsByIndex).length > 0 && (
-              <button
-                type="button"
-                onClick={() => copyInGameChatRoster()}
-                className="px-2.5 py-1.5 rounded-lg border bg-zinc-900/80 border-amber-500/40 text-amber-300 hover:bg-amber-500/20 font-bold flex items-center gap-1.5 transition active:scale-95"
-                title="คัดลอกรายชื่อไปวางในแชทเกม Valorant [Hotkey: C]"
-              >
-                <Copy className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">ก๊อปแชทเกม (C)</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => copyInGameChatRoster()}
+                  className="px-2.5 py-1.5 rounded-lg border bg-zinc-900/80 border-amber-500/40 text-amber-300 hover:bg-amber-500/20 font-bold flex items-center gap-1.5 transition active:scale-95"
+                  title="คัดลอกรายชื่อไปวางในแชทเกม Valorant [Hotkey: C]"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">แชทในเกม</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => copyDiscordRoster()}
+                  className="px-2.5 py-1.5 rounded-lg border bg-[#5865F2]/15 border-[#5865F2]/50 text-[#8891f7] hover:bg-[#5865F2]/30 hover:text-white font-bold flex items-center gap-1.5 transition active:scale-95 shadow"
+                  title="คัดลอกรายชื่อส่งเข้าแชท Discord แบบฟอร์แมต Markdown"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Discord</span>
+                </button>
+              </>
             )}
 
             {/* Blacklist Modal button - Host only */}
@@ -1617,6 +1675,7 @@ function App() {
           onClose={() => setShowVictory(false)}
           onRecordMatch={!isGuest ? () => setShowRecordMatch(true) : undefined}
           onShareCard={() => setShowShareCardModal(true)}
+          roomCode={roomCode}
         />
 
         <StatsDashboard
@@ -1806,6 +1865,13 @@ function App() {
             )}
           </div>
         )}
+
+        {/* Live Floating Reactions (Available for all squad members in a room) */}
+        <FloatingEmojiReactions
+          isInRoom={isInRoom}
+          onSendEmoji={sendEmojiReaction}
+          incomingReaction={latestReaction}
+        />
 
       </div>
     </div>

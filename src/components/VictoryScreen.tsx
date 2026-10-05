@@ -19,6 +19,7 @@ interface VictoryScreenProps {
   readonly onRecordMatch?: () => void;
   readonly onShareCard?: () => void;
   readonly profiles?: Record<number, PlayerProfile>;
+  readonly roomCode?: string | null;
 }
 
 // Pre-generated particle positions to avoid Math.random() during render
@@ -70,18 +71,44 @@ export function VictoryScreen({
   onRecordMatch,
   onShareCard,
   profiles,
+  roomCode,
 }: VictoryScreenProps) {
   const [copiedText, setCopiedText] = useState(false);
   const [copiedInGame, setCopiedInGame] = useState(false);
 
   const handleCopyTextComp = () => {
-    const lines = ['🎮 VALOMIZE RANDOMIZER SQUAD:'];
+    const roleIcons: Record<string, string> = {
+      Duelist: '⚔️',
+      Initiator: '🎯',
+      Controller: '💨',
+      Sentinel: '🛡️',
+    };
+
+    const mapHeader = mapName ? ` — 🗺️ **[${mapName.toUpperCase()}]**` : '';
+    const lines = [
+      `🎮 **VALOMIZE SQUAD LINEUP**${mapHeader}`,
+      '──────────────────────────────',
+    ];
+
     players.forEach((p, idx) => {
       const agent = assignments[idx];
       const status = playerStatuses[idx];
       const tag = status === 'MVP' ? ' 👑 [MVP]' : status === 'BOTTOM' ? ' 💀 [Bot Frag]' : '';
-      lines.push(`• ${p}: ${agent ? `${agent.name} (${agent.role})` : 'Random'}${tag}`);
+      if (agent) {
+        const icon = roleIcons[agent.role] || '🔹';
+        lines.push(`${icon} **${p}:** ${agent.name} *(${agent.role})*${tag}`);
+      } else {
+        lines.push(`🎲 **${p}:** Random Agent${tag}`);
+      }
     });
+
+    lines.push('──────────────────────────────');
+    if (roomCode) {
+      lines.push(`🔗 **เข้าห้องดูสด:** https://valomize-randomize.vercel.app/?room=${roomCode}`);
+    } else {
+      lines.push(`🎲 *สุ่มโดย Valomize Randomizer*`);
+    }
+
     navigator.clipboard.writeText(lines.join('\n'));
     setCopiedText(true);
     setTimeout(() => setCopiedText(false), 2500);
@@ -386,16 +413,16 @@ export function VictoryScreen({
               <Button
                 onClick={handleCopyTextComp}
                 variant="outline"
-                className="border-zinc-700 bg-zinc-900/80 hover:bg-zinc-800 text-white font-bold px-4 py-3 flex items-center gap-2 shadow"
-                title="คัดลอกรายชื่อตัวละครเป็นข้อความไปวางใน Discord"
+                className="border-[#5865F2]/50 bg-[#5865F2]/15 hover:bg-[#5865F2]/30 text-[#8891f7] hover:text-white font-bold px-4 py-3 flex items-center gap-2 shadow"
+                title="คัดลอกรายชื่อตัวละครเป็นข้อความฟอร์แมต Markdown ไปวางใน Discord"
               >
                 {copiedText ? (
                   <>
-                    <Check className="h-4 w-4 text-emerald-400" /> คัดลอกข้อความแล้ว!
+                    <Check className="h-4 w-4 text-emerald-400" /> คัดลอก Discord แล้ว!
                   </>
                 ) : (
                   <>
-                    <Copy className="h-4 w-4 text-zinc-400" /> คัดลอก Discord
+                    <Copy className="h-4 w-4 text-[#8891f7]" /> คัดลอกลง Discord
                   </>
                 )}
               </Button>

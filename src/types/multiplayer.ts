@@ -51,6 +51,13 @@ export interface SlotUpdatedPayload {
   updatedBy: string;
 }
 
+export interface EmojiReactionPayload {
+  emoji: string;
+  senderName: string;
+  id: string;
+  xOffsetPercent?: number; // 15% to 85%
+}
+
 export interface MultiplayerSyncMessage {
   type: 
     | 'STATE_SYNC' 
@@ -61,7 +68,8 @@ export interface MultiplayerSyncMessage {
     | 'MEMBER_LEAVE' 
     | 'HOST_TRANSFERRED'
     | 'MEMBER_KICKED'
-    | 'SLOT_UPDATED';
+    | 'SLOT_UPDATED'
+    | 'EMOJI_REACTION';
   roomCode: string;
   sender: string;
   timestamp: number;

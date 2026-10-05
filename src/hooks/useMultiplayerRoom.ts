@@ -6,6 +6,7 @@ import {
   type HostTransferredPayload,
   type MemberKickedPayload,
   type SlotUpdatedPayload,
+  type EmojiReactionPayload,
 } from '@/types/multiplayer';
 import { type MatchRecord } from '@/types/stats';
 import {
@@ -29,6 +30,7 @@ import {
   removeRoomHost,
   transferRoomHost,
   broadcastHostTransfer,
+  broadcastEmojiReaction,
   fetchRoomMembers,
   saveRoomStateToDatabase,
 } from '@/services/supabaseService';
@@ -40,7 +42,8 @@ export function useMultiplayerRoom(
   onHostTransferred?: (payload: HostTransferredPayload) => void,
   onMemberKicked?: (payload: MemberKickedPayload) => void,
   onSelfKicked?: () => void,
-  onSlotUpdated?: (payload: SlotUpdatedPayload) => void
+  onSlotUpdated?: (payload: SlotUpdatedPayload) => void,
+  onEmojiReaction?: (payload: EmojiReactionPayload) => void
 ) {
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [isHost, setIsHost] = useState<boolean>(() => {
@@ -139,9 +142,14 @@ export function useMultiplayerRoom(
         if (payload) {
           onSlotUpdated?.(payload);
         }
+      } else if (msg.type === 'EMOJI_REACTION') {
+        const payload = msg.payload as EmojiReactionPayload;
+        if (payload) {
+          onEmojiReaction?.(payload);
+        }
       }
     },
-    [onRemoteStateReceived, onRemoteMatchReceived, onHostTransferred, onMemberKicked, onSelfKicked, onSlotUpdated, isHost]
+    [onRemoteStateReceived, onRemoteMatchReceived, onHostTransferred, onMemberKicked, onSelfKicked, onSlotUpdated, onEmojiReaction, isHost]
   );
 
   // Auto-connect if room query parameter exists
@@ -478,6 +486,26 @@ export function useMultiplayerRoom(
     [roomCode, members, myPlayerName]
   );
 
+  const sendEmojiReaction = useCallback(
+    (emoji: string) => {
+      if (!roomCode) return;
+      const xOffsetPercent = Math.floor(15 + Math.random() * 70);
+      const payload: EmojiReactionPayload = {
+        emoji,
+        senderName: myPlayerName,
+        id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        xOffsetPercent,
+      };
+
+      // Trigger local particle immediately for responsive feedback
+      onEmojiReaction?.(payload);
+
+      // Broadcast to other room members
+      broadcastEmojiReaction(roomCode, myPlayerName, emoji, xOffsetPercent).catch(() => {});
+    },
+    [roomCode, myPlayerName, onEmojiReaction]
+  );
+
   return {
     roomCode,
     isHost,
@@ -498,5 +526,6 @@ export function useMultiplayerRoom(
     transferHost,
     kickMember,
     changeMemberSlot,
+    sendEmojiReaction,
   };
 }

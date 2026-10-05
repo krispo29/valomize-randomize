@@ -372,6 +372,28 @@ export async function broadcastHostTransfer(
   await broadcastRoomMessage(cleanCode, msg);
 }
 
+export async function broadcastEmojiReaction(
+  roomCode: string,
+  sender: string,
+  emoji: string,
+  xOffsetPercent: number = 50
+): Promise<void> {
+  const cleanCode = sanitizeRoomCode(roomCode);
+  const msg: MultiplayerSyncMessage = {
+    type: 'EMOJI_REACTION',
+    roomCode: cleanCode,
+    sender,
+    timestamp: Date.now(),
+    payload: {
+      emoji,
+      senderName: sender,
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      xOffsetPercent,
+    },
+  };
+  await broadcastRoomMessage(cleanCode, msg);
+}
+
 
 export async function saveRoomStateToDatabase(
   roomCode: string,
