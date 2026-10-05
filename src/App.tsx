@@ -67,7 +67,10 @@ function App() {
   // Multiplayer Room State (Phase 4)
   const handleRemoteState = (state: RoomState) => {
     if (state.friends && state.friends.length > 0) {
-      setFriends(state.friends);
+      const realFriends = state.friends.filter(f => !f.startsWith('รอ') && f !== 'Waiting...');
+      if (realFriends.length > 0 && !isInRoom) {
+        setFriends(realFriends);
+      }
     }
     if (state.selectedMap !== undefined) {
       setSelectedMap(state.selectedMap);
@@ -179,29 +182,67 @@ function App() {
     playInstantRoll, playClick, isMuted, toggleMute 
   } = useSoundManager();
 
+  // Active Friends: When inside a multiplayer room, player slots strictly reflect actual room members.
+  // Default names (e.g. Sunny, Nut, Do) are never displayed in empty room slots.
+  const activeFriends = useMemo(() => {
+    if (!isInRoom) {
+      return friends;
+    }
+
+    const sortedMembers = [...roomMembers].sort((a, b) => {
+      if (a.isHost && !b.isHost) return -1;
+      if (!a.isHost && b.isHost) return 1;
+      return 0;
+    });
+
+    const result: string[] = [];
+
+    // If room members list hasn't resolved yet, start with current user in slot 0
+    if (sortedMembers.length === 0) {
+      result.push(myPlayerName || 'Host');
+    } else {
+      sortedMembers.forEach((m) => {
+        if (result.length < 5) {
+          const name = m.isSelf ? (myPlayerName || m.playerName) : m.playerName;
+          if (name) {
+            result.push(name);
+          }
+        }
+      });
+    }
+
+    // Unfilled slots are marked as waiting, not with fake default names
+    while (result.length < 5) {
+      result.push('รอผู้เล่น...');
+    }
+
+    return result;
+  }, [isInRoom, friends, roomMembers, myPlayerName]);
+
   // Initialize
   useEffect(() => {
     if (gridIndices.length === 0 && deckIndices.length === 0) {
-        setGridIndices(friends.map((_, i) => i));
+        setGridIndices(activeFriends.map((_, i) => i));
     }
-  }, [friends, gridIndices.length, deckIndices.length]);
+  }, [activeFriends, gridIndices.length, deckIndices.length]);
 
-  // Sync grid indices with friends length changes
+  // Sync grid indices with activeFriends length changes
   useEffect(() => {
     if (phase === 'IDLE') {
-       if (gridIndices.length !== friends.length) {
-         setGridIndices(friends.map((_, i) => i));
+       if (gridIndices.length !== activeFriends.length) {
+         setGridIndices(activeFriends.map((_, i) => i));
          setDeckIndices([]);
        }
     }
-  }, [friends, phase, gridIndices.length, friends.length]);
+  }, [activeFriends, phase, gridIndices.length]);
 
   // Quick 1-click in-game chat copy helper
   const copyInGameChatRoster = (assignmentsToUse = assignmentsByIndex) => {
     playClick();
-    const parts = friends.map((p, idx) => {
+    const parts = activeFriends.map((p, idx) => {
       const agent = assignmentsToUse[idx];
-      return `${p} (${agent ? agent.name : '?'})`;
+      const displayName = p.startsWith('รอ') ? `Slot ${idx + 1}` : p;
+      return `${displayName} (${agent ? agent.name : '?'})`;
     });
     const mapStr = selectedMap ? `[${selectedMap}] ` : '';
     const text = `VALOMIZE ${mapStr}> ${parts.join(' | ')}`;
@@ -280,9 +321,9 @@ function App() {
       if (isInRoom && isHost && roomCode) {
         broadcastState({
           roomCode,
-          hostName: friends[0] || 'Host',
+          hostName: activeFriends[0] || 'Host',
           createdAt: Date.now(),
-          friends,
+          friends: activeFriends,
           profiles,
           selectedMap,
           playerStatuses,
@@ -315,17 +356,17 @@ function App() {
     };
     setAssignmentsByIndex(updated);
 
-    const nameA = friends[idxA] || `Player ${idxA + 1}`;
-    const nameB = friends[idxB] || `Player ${idxB + 1}`;
+    const nameA = activeFriends[idxA] || `Player ${idxA + 1}`;
+    const nameB = activeFriends[idxB] || `Player ${idxB + 1}`;
     setToastMessage(`🔄 สลับตัวละครระหว่าง ${nameA} (${agentA?.name || '?'}) กับ ${nameB} (${agentB?.name || '?'}) แล้ว!`);
     setTimeout(() => setToastMessage(null), 2500);
 
     if (isInRoom && isHost && roomCode) {
       broadcastState({
         roomCode,
-        hostName: friends[0] || 'Host',
+        hostName: activeFriends[0] || 'Host',
         createdAt: Date.now(),
-        friends,
+        friends: activeFriends,
         profiles,
         selectedMap,
         playerStatuses,
@@ -366,7 +407,7 @@ function App() {
       const isPureRandom = currentPreset?.isPureRandom;
 
       if (isPureRandom) {
-        const unassigned = friends.map((_, i) => i).filter(i => !assignedIndices.has(i));
+        const unassigned = activeFriends.map((_, i) => i).filter(i => !assignedIndices.has(i));
         unassigned.forEach((pIdx) => {
           const comfortList = profiles[pIdx]?.comfortAgents;
           let pick: Agent | undefined;
@@ -435,7 +476,7 @@ function App() {
       };
 
       // 1. Handle Forced Assignments (MVP / Bottom Frag) for unassigned
-      friends.forEach((_, index) => {
+      activeFriends.forEach((_, index) => {
           if (assignedIndices.has(index)) return;
 
           const status = playerStatuses[index];
@@ -462,7 +503,7 @@ function App() {
       });
 
       // 1.5 Handle Comfort Picks for unassigned players who have them configured
-      const unassignedWithComfort = friends
+      const unassignedWithComfort = activeFriends
         .map((_, index) => index)
         .filter(index => !assignedIndices.has(index) && profiles[index]?.comfortAgents && profiles[index].comfortAgents!.length > 0)
         .sort((a, b) => (profiles[a].comfortAgents?.length || 0) - (profiles[b].comfortAgents?.length || 0));
@@ -527,7 +568,7 @@ function App() {
       });
 
       // 3. Fill remaining slots
-      const remainingSlotsNeeded = friends.length - assignedIndices.size - requiredPool.length;
+      const remainingSlotsNeeded = activeFriends.length - assignedIndices.size - requiredPool.length;
       if (remainingSlotsNeeded > 0) {
          const availableMeta = currentPool.filter(a => !usedAgentNames.has(a.name));
          const availableAll = availablePool.filter(a => !usedAgentNames.has(a.name));
@@ -553,7 +594,7 @@ function App() {
       // 4. Assign remaining players
       const shuffledPool = [...requiredPool].sort(() => 0.5 - Math.random());
       
-      const unassignedPlayerIndices = friends
+      const unassignedPlayerIndices = activeFriends
         .map((_, index) => index)
         .filter(index => !assignedIndices.has(index))
         .sort(() => 0.5 - Math.random());
@@ -581,7 +622,7 @@ function App() {
       setShowMapSelector(false);
       setShowVictory(false);
 
-      const allIndices = friends.map((_, i) => i);
+      const allIndices = activeFriends.map((_, i) => i);
       setGridIndices(allIndices);
       setDeckIndices([]);
 
@@ -592,9 +633,9 @@ function App() {
       if (isInRoom && isHost && roomCode) {
         broadcastState({
           roomCode,
-          hostName: friends[0] || 'Host',
+          hostName: activeFriends[0] || 'Host',
           createdAt: Date.now(),
-          friends,
+          friends: activeFriends,
           profiles,
           selectedMap,
           playerStatuses,
@@ -627,7 +668,7 @@ function App() {
 
     // 1. GATHER
     setPhase('GATHERING');
-    const allIndices = friends.map((_, i) => i);
+    const allIndices = activeFriends.map((_, i) => i);
     setGridIndices([]);
     const currentDeck = [...allIndices];
     setDeckIndices(currentDeck);
@@ -635,9 +676,9 @@ function App() {
     if (isInRoom && isHost && roomCode) {
       broadcastState({
         roomCode,
-        hostName: friends[0] || 'Host',
+        hostName: activeFriends[0] || 'Host',
         createdAt: Date.now(),
-        friends,
+        friends: activeFriends,
         profiles,
         selectedMap,
         playerStatuses,
@@ -669,9 +710,9 @@ function App() {
     if (isInRoom && isHost && roomCode) {
       broadcastState({
         roomCode,
-        hostName: friends[0] || 'Host',
+        hostName: activeFriends[0] || 'Host',
         createdAt: Date.now(),
-        friends,
+        friends: activeFriends,
         profiles,
         selectedMap,
         playerStatuses,
@@ -691,7 +732,7 @@ function App() {
     setPhase('DEALING');
     stopRoll();
     
-    const indicesToDeal = friends.map((_, i) => i);
+    const indicesToDeal = activeFriends.map((_, i) => i);
     const currRevealed = new Set<number>();
     const currGrid: number[] = [];
     
@@ -714,9 +755,9 @@ function App() {
         if (isInRoom && isHost && roomCode) {
           broadcastState({
             roomCode,
-            hostName: friends[0] || 'Host',
+            hostName: activeFriends[0] || 'Host',
             createdAt: Date.now(),
-            friends,
+            friends: activeFriends,
             profiles,
             selectedMap,
             playerStatuses,
@@ -747,9 +788,9 @@ function App() {
     if (isInRoom && isHost && roomCode) {
       broadcastState({
         roomCode,
-        hostName: friends[0] || 'Host',
+        hostName: activeFriends[0] || 'Host',
         createdAt: Date.now(),
-        friends,
+        friends: activeFriends,
         profiles,
         selectedMap,
         playerStatuses,
@@ -866,7 +907,7 @@ function App() {
     phase, showVictory, showStatsDashboard, showRecordMatch, showShareCardModal, 
     showProfilesModal, showMultiplayerModal, showBlacklistModal, showShortcutsModal,
     showMapVetoModal, showGunChallengeModal,
-    assignmentsByIndex, friends, selectedMap, isTurbo, isGuest
+    assignmentsByIndex, activeFriends, selectedMap, isTurbo, isGuest
   ]);
 
 
@@ -1121,7 +1162,7 @@ function App() {
                 {!isGuest && showSettings && (
                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mb-4">
                     <ErrorBoundary>
-                    <RoleSelector rolesCount={rolesCount} setRolesCount={setRolesCount} totalPlayers={friends.length} />
+                    <RoleSelector rolesCount={rolesCount} setRolesCount={setRolesCount} totalPlayers={activeFriends.length} />
                     </ErrorBoundary>
                 </motion.div>
                 )}
@@ -1295,7 +1336,7 @@ function App() {
         )}
 
         {/* Radiant IGL Tactical Banner */}
-        {phase === 'IDLE' && Object.keys(assignmentsByIndex).length > 0 && friends.every((_, i) => Boolean(assignmentsByIndex[i])) && (
+        {phase === 'IDLE' && Object.keys(assignmentsByIndex).length > 0 && activeFriends.every((_, i) => Boolean(assignmentsByIndex[i])) && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1355,7 +1396,7 @@ function App() {
                                 }}
                              >
                                  <AgentCard 
-                                    playerName={friends[playerIndex]}
+                                    playerName={activeFriends[playerIndex] || `Player ${playerIndex + 1}`}
                                     agent={null}
                                     rolling={true}
                                     canEdit={false}
@@ -1372,7 +1413,7 @@ function App() {
 
             {/* The Grid (Players) */}
             <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 justify-items-center transition-opacity duration-500 ${(phase === 'GATHERING' || phase === 'SHUFFLING') ? 'opacity-30' : 'opacity-100'}`}>
-                {friends.map((friendName, index) => {
+                {activeFriends.map((friendName, index) => {
                     const isInGrid = gridIndices.includes(index);
                     const isRevealed = revealedIndices.has(index);
                     const isFaceDown = phase === 'GATHERING' || phase === 'SHUFFLING' || (phase === 'DEALING' && !isRevealed);
@@ -1410,7 +1451,7 @@ function App() {
                                         playerName={friendName}
                                         agent={assignedAgent || null}
                                         rolling={isFaceDown} 
-                                        canEdit={!isGuest && editMode}
+                                        canEdit={!isGuest && !isInRoom && editMode}
                                         onEditName={!isGuest ? (n) => {
                                             const newF = [...friends];
                                             newF[index] = n;
@@ -1438,7 +1479,7 @@ function App() {
                                         onTogglePin={!isGuest ? () => handleTogglePin(index) : undefined}
                                         onRerollSingle={!isGuest ? () => handleRerollSingle(index) : undefined}
                                         onSwapWithPlayer={!isGuest ? (targetIdx) => handleSwapAgents(index, targetIdx) : undefined}
-                                        teammates={!isGuest ? friends
+                                        teammates={!isGuest ? activeFriends
                                             .map((name, i) => ({ index: i, name, agentName: assignmentsByIndex[i]?.name }))
                                             .filter(t => t.index !== index) : undefined}
                                     />
@@ -1452,10 +1493,10 @@ function App() {
 
         <VictoryScreen 
           show={showVictory} 
-          players={friends} 
+          players={activeFriends} 
           assignments={assignmentsByIndex} 
 		  playerStatuses={playerStatuses}
-          shuffledOrder={friends.map((_, i) => i)}
+          shuffledOrder={activeFriends.map((_, i) => i)}
           profiles={profiles}
           mapName={selectedMap || undefined}
           onPlayAgain={!isGuest ? () => {
@@ -1488,7 +1529,7 @@ function App() {
               broadcastMatch(fullMatch);
             }
           }}
-          players={friends}
+          players={activeFriends}
           assignments={assignmentsByIndex}
           playerStatuses={playerStatuses}
           selectedMap={selectedMap}
@@ -1521,7 +1562,6 @@ function App() {
           members={roomMembers}
           myPlayerName={myPlayerName}
           onUpdatePlayerName={setMyPlayerName}
-          friends={friends}
         />
 
         {/* Live Member Join Floating Toast */}
@@ -1537,7 +1577,7 @@ function App() {
         <ShareMatchCardModal
           show={showShareCardModal}
           onClose={() => setShowShareCardModal(false)}
-          players={friends}
+          players={activeFriends}
           assignments={assignmentsByIndex}
           playerStatuses={playerStatuses}
           selectedMap={selectedMap}

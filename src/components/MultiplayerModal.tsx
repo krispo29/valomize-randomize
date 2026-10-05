@@ -44,7 +44,6 @@ interface MultiplayerModalProps {
   members?: RoomMember[];
   myPlayerName?: string;
   onUpdatePlayerName?: (name: string) => void;
-  friends?: string[];
 }
 
 export function MultiplayerModal({
@@ -59,7 +58,6 @@ export function MultiplayerModal({
   members = [],
   myPlayerName = 'Player',
   onUpdatePlayerName,
-  friends = [],
 }: MultiplayerModalProps) {
   const [inputCode, setInputCode] = useState<string>('');
   const [customHostCode, setCustomHostCode] = useState<string>('');
@@ -387,30 +385,7 @@ export function MultiplayerModal({
                         </div>
                       )}
 
-                      {/* Quick Select from Friends */}
-                      {friends && friends.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                          <span className="text-[10px] text-zinc-500">เลือกเร็วจากตี้:</span>
-                          {friends.map((fName, idx) => (
-                            <button
-                              key={idx}
-                              type="button"
-                              onClick={() => {
-                                setTempName(fName);
-                                onUpdatePlayerName?.(fName);
-                                setIsEditingName(false);
-                              }}
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded transition ${
-                                myPlayerName === fName
-                                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50'
-                                  : 'bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700'
-                              }`}
-                            >
-                              {fName}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+
                     </div>
 
                     {/* Active Members List */}

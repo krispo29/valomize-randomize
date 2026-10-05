@@ -28,7 +28,18 @@ export function useMultiplayerRoom(
   // Room presence & member list
   const [members, setMembers] = useState<RoomMember[]>([]);
   const [myPlayerName, setMyPlayerNameState] = useState<string>(() => {
-    return getSavedDisplayName() || 'Player';
+    const saved = getSavedDisplayName();
+    if (saved) return saved;
+    try {
+      const savedFriends = localStorage.getItem('valorant-friends');
+      if (savedFriends) {
+        const arr = JSON.parse(savedFriends);
+        if (Array.isArray(arr) && arr[0]) return arr[0];
+      }
+    } catch {
+      // ignore
+    }
+    return 'Player';
   });
   const [mySlotIndex, setMySlotIndex] = useState<number | null>(null);
   const sessionIdRef = useRef<string>(getPlayerSessionId());

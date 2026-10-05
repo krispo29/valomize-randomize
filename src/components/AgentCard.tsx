@@ -48,10 +48,11 @@ const getTrendIcon = (trend: string) => {
   }
 };
 
-const getCardClasses = (rolling: boolean, status: PlayerStatus, isPinned?: boolean, className?: string) => {
+const getCardClasses = (rolling: boolean, status: PlayerStatus, isPinned?: boolean, className?: string, isWaiting?: boolean) => {
   return cn(
     "overflow-hidden border-2 bg-zinc-900 border-zinc-800 relative h-96 flex flex-col items-center justify-between shadow-lg transition-all duration-300",
     "will-change-transform backface-visibility-hidden transform-gpu", // Performance optimizations
+    !rolling && isWaiting && "border-dashed border-zinc-800/80 bg-zinc-950/40 opacity-80",
     // Only show status colors if REVEALED
     !rolling && status === 'MVP' && "border-yellow-500 shadow-yellow-500/20",
     !rolling && status === 'BOTTOM' && "border-blue-900 shadow-blue-900/20 opacity-90",
@@ -203,7 +204,8 @@ export function AgentCard({
   const displayAgent = agent || { name: '?', role: 'Duelist', image: '', color: '#333' };
   const [showInfo, setShowInfo] = useState(false);
   const [showSwapMenu, setShowSwapMenu] = useState(false);
-  const hasQuickActions = Boolean(!rolling && !canEdit && agent && (onRerollSingle || onTogglePin || (onSwapWithPlayer && teammates && teammates.length > 0)));
+  const isWaiting = Boolean(playerName && (playerName.startsWith('รอ') || playerName === 'Waiting...'));
+  const hasQuickActions = Boolean(!rolling && !canEdit && agent && !isWaiting && (onRerollSingle || onTogglePin || (onSwapWithPlayer && teammates && teammates.length > 0)));
 
   return (
     <motion.div
@@ -235,7 +237,7 @@ export function AgentCard({
       aria-label={!rolling && !canEdit && strategyProfile ? `View strategic intel for ${playerName}` : undefined}
       aria-expanded={!rolling && !canEdit && strategyProfile ? showInfo : undefined}
     >
-      <Card className={getCardClasses(rolling, status, isPinned, className)}>
+      <Card className={getCardClasses(rolling, status, isPinned, className, isWaiting)}>
         
         {/* Card Back (Face Down) */}
         {rolling && (
@@ -378,17 +380,22 @@ export function AgentCard({
                )}
              </div>
           ) : (
-             <CardTitle className={cn("text-xl font-bold text-white uppercase tracking-wider flex items-center justify-center gap-2")}>
-               <span>{playerName}</span>
-               {rankIcon && (
-                 <img
-                   src={rankIcon}
-                   alt={rankName || 'Rank'}
-                   className="w-5 h-5 object-contain inline-block shrink-0 drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]"
-                   title={rankName}
-                 />
-               )}
-             </CardTitle>
+             <CardTitle className={cn(
+                "text-xl font-bold uppercase tracking-wider flex items-center justify-center gap-2",
+                isWaiting 
+                  ? "text-zinc-500 font-semibold text-xs md:text-sm py-1 border border-dashed border-zinc-700/60 rounded-lg px-3 bg-zinc-950/60 normal-case tracking-normal" 
+                  : "text-white"
+              )}>
+                <span>{playerName}</span>
+                {rankIcon && !isWaiting && (
+                  <img
+                    src={rankIcon}
+                    alt={rankName || 'Rank'}
+                    className="w-5 h-5 object-contain inline-block shrink-0 drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]"
+                    title={rankName}
+                  />
+                )}
+              </CardTitle>
           )}
         </CardHeader>
 
