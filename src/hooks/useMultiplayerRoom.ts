@@ -509,11 +509,9 @@ export function useMultiplayerRoom(
       }
     };
 
-    window.addEventListener('pagehide', handleUnload);
     window.addEventListener('beforeunload', handleUnload);
 
     return () => {
-      window.removeEventListener('pagehide', handleUnload);
       window.removeEventListener('beforeunload', handleUnload);
     };
   }, [roomCode, isHost]);

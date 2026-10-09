@@ -133,7 +133,10 @@ export function MultiplayerModal({
     const sorted = [...members].sort((a, b) => {
       if (a.isHost && !b.isHost) return -1;
       if (!a.isHost && b.isHost) return 1;
-      return 0;
+      const aSlot = a.slotIndex !== null && a.slotIndex !== undefined && a.slotIndex >= 0 ? a.slotIndex : 99;
+      const bSlot = b.slotIndex !== null && b.slotIndex !== undefined && b.slotIndex >= 0 ? b.slotIndex : 99;
+      if (aSlot !== bSlot) return aSlot - bSlot;
+      return a.id.localeCompare(b.id);
     });
 
     sorted.forEach((m) => {

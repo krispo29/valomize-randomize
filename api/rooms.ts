@@ -64,7 +64,7 @@ async function checkAndMigrateHost(sql: any, roomCode: string) {
         SELECT id, player_name FROM room_members 
         WHERE UPPER(room_code) = ${roomCode} 
           AND last_seen > NOW() - INTERVAL '25 seconds'
-        ORDER BY created_at ASC 
+        ORDER BY created_at ASC, id ASC 
         LIMIT 1;
       `;
       if (candidates && candidates.length > 0) {
@@ -177,7 +177,11 @@ export default async function handler(req: any, res: any) {
         FROM room_members
         WHERE UPPER(room_code) = ${roomCode}
           AND last_seen > NOW() - INTERVAL '25 seconds'
-        ORDER BY is_host DESC, created_at ASC
+        ORDER BY 
+          is_host DESC, 
+          CASE WHEN slot_index IS NOT NULL AND slot_index >= 0 THEN slot_index ELSE 99 END ASC,
+          created_at ASC, 
+          id ASC
       `;
 
       const members = (rows || []).map((r: any) => ({
@@ -242,12 +246,49 @@ export default async function handler(req: any, res: any) {
       `;
       const anotherHostExists = Array.isArray(activeHostRows) && activeHostRows.length > 0;
       const canBeHost = isHost && !anotherHostExists;
+      // Deterministic slot computation:
+      // 1. Check if member already has a saved slot_index
+      const currentMemberRows = await sql`
+        SELECT slot_index, is_host FROM room_members WHERE id = ${memberId} LIMIT 1
+      `;
+      const currentMember = currentMemberRows?.[0];
+
+      let computedSlot: number;
+      if (slotIndex !== null && slotIndex !== undefined) {
+        // Explicit slot requested (0..4 or -1 for bench)
+        computedSlot = slotIndex;
+      } else if (currentMember && currentMember.slot_index !== null && currentMember.slot_index !== undefined) {
+        // Retain existing assigned slot across heartbeats/reconnects
+        computedSlot = Number(currentMember.slot_index);
+      } else if (canBeHost) {
+        // Host gets slot 0 by default
+        computedSlot = 0;
+      } else {
+        // New or unslotted guest: query which active slots (0..4) are currently occupied
+        const activeOccupied = await sql`
+          SELECT slot_index FROM room_members 
+          WHERE UPPER(room_code) = ${roomCode} 
+            AND id != ${memberId} 
+            AND last_seen > NOW() - INTERVAL '25 seconds'
+            AND slot_index IS NOT NULL 
+            AND slot_index >= 0
+        `;
+        const takenSlots = new Set((activeOccupied || []).map((r: any) => Number(r.slot_index)));
+        let freeSlot = -1;
+        for (let s = 0; s < 5; s++) {
+          if (!takenSlots.has(s)) {
+            freeSlot = s;
+            break;
+          }
+        }
+        computedSlot = freeSlot;
+      }
 
       await sql`
         INSERT INTO room_members (
           id, room_code, player_name, is_host, slot_index, last_seen
         ) VALUES (
-          ${memberId}, ${roomCode}, ${playerName}, ${canBeHost}, ${slotIndex}, NOW()
+          ${memberId}, ${roomCode}, ${playerName}, ${canBeHost}, ${computedSlot}, NOW()
         )
         ON CONFLICT (id) DO UPDATE SET
           player_name = EXCLUDED.player_name,
@@ -256,10 +297,7 @@ export default async function handler(req: any, res: any) {
             WHEN room_members.is_host = TRUE THEN TRUE 
             ELSE EXCLUDED.is_host 
           END,
-          slot_index = CASE 
-            WHEN EXCLUDED.slot_index IS NOT NULL THEN EXCLUDED.slot_index
-            ELSE room_members.slot_index 
-          END,
+          slot_index = ${computedSlot},
           last_seen = NOW();
       `;
 
@@ -278,7 +316,11 @@ export default async function handler(req: any, res: any) {
         FROM room_members
         WHERE UPPER(room_code) = ${roomCode}
           AND last_seen > NOW() - INTERVAL '25 seconds'
-        ORDER BY is_host DESC, created_at ASC
+        ORDER BY 
+          is_host DESC, 
+          CASE WHEN slot_index IS NOT NULL AND slot_index >= 0 THEN slot_index ELSE 99 END ASC,
+          created_at ASC, 
+          id ASC
       `;
 
       const members = (rows || []).map((r: any) => ({
@@ -350,7 +392,11 @@ export default async function handler(req: any, res: any) {
           FROM room_members
           WHERE UPPER(room_code) = ${roomCode}
             AND last_seen > NOW() - INTERVAL '25 seconds'
-          ORDER BY is_host DESC, created_at ASC
+          ORDER BY 
+            is_host DESC, 
+            CASE WHEN slot_index IS NOT NULL AND slot_index >= 0 THEN slot_index ELSE 99 END ASC,
+            created_at ASC, 
+            id ASC
         `;
         const members = (rows || []).map((r: any) => ({
           id: r.id,
@@ -462,7 +508,11 @@ export default async function handler(req: any, res: any) {
           FROM room_members
           WHERE UPPER(room_code) = ${roomCode}
             AND last_seen > NOW() - INTERVAL '25 seconds'
-          ORDER BY is_host DESC, created_at ASC
+          ORDER BY 
+            is_host DESC, 
+            CASE WHEN slot_index IS NOT NULL AND slot_index >= 0 THEN slot_index ELSE 99 END ASC,
+            created_at ASC, 
+            id ASC
         `;
         const members = (rows || []).map((r: any) => ({
           id: r.id,
@@ -521,7 +571,11 @@ export default async function handler(req: any, res: any) {
         FROM room_members
         WHERE UPPER(room_code) = ${roomCode}
           AND last_seen > NOW() - INTERVAL '25 seconds'
-        ORDER BY is_host DESC, created_at ASC
+        ORDER BY 
+          is_host DESC, 
+          CASE WHEN slot_index IS NOT NULL AND slot_index >= 0 THEN slot_index ELSE 99 END ASC,
+          created_at ASC, 
+          id ASC
       `;
 
       const members = (rows || []).map((r: any) => ({
