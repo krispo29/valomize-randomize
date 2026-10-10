@@ -55,7 +55,7 @@ async function checkAndMigrateHost(sql: any, roomCode: string) {
       SELECT id FROM room_members 
       WHERE UPPER(room_code) = ${roomCode} 
         AND is_host = TRUE 
-        AND last_seen > NOW() - INTERVAL '25 seconds'
+        AND last_seen > NOW() - INTERVAL '60 seconds'
       LIMIT 1;
     `;
 
@@ -63,7 +63,7 @@ async function checkAndMigrateHost(sql: any, roomCode: string) {
       const candidates = await sql`
         SELECT id, player_name FROM room_members 
         WHERE UPPER(room_code) = ${roomCode} 
-          AND last_seen > NOW() - INTERVAL '25 seconds'
+          AND last_seen > NOW() - INTERVAL '60 seconds'
         ORDER BY created_at ASC, id ASC 
         LIMIT 1;
       `;
@@ -165,7 +165,7 @@ export default async function handler(req: any, res: any) {
       // Check and migrate host if active host is missing
       await checkAndMigrateHost(sql, roomCode);
 
-      // Active members seen within last 25 seconds
+      // Active members seen within last 60 seconds
       const rows = await sql`
         SELECT 
           id, 
@@ -176,7 +176,7 @@ export default async function handler(req: any, res: any) {
           EXTRACT(EPOCH FROM last_seen) * 1000 AS last_seen
         FROM room_members
         WHERE UPPER(room_code) = ${roomCode}
-          AND last_seen > NOW() - INTERVAL '25 seconds'
+          AND last_seen > NOW() - INTERVAL '60 seconds'
         ORDER BY 
           is_host DESC, 
           CASE WHEN slot_index IS NOT NULL AND slot_index >= 0 THEN slot_index ELSE 99 END ASC,
@@ -241,7 +241,7 @@ export default async function handler(req: any, res: any) {
         WHERE UPPER(room_code) = ${roomCode} 
           AND is_host = TRUE 
           AND id != ${memberId} 
-          AND last_seen > NOW() - INTERVAL '25 seconds'
+          AND last_seen > NOW() - INTERVAL '60 seconds'
         LIMIT 1;
       `;
       const anotherHostExists = Array.isArray(activeHostRows) && activeHostRows.length > 0;
@@ -269,7 +269,7 @@ export default async function handler(req: any, res: any) {
           SELECT slot_index FROM room_members 
           WHERE UPPER(room_code) = ${roomCode} 
             AND id != ${memberId} 
-            AND last_seen > NOW() - INTERVAL '25 seconds'
+            AND last_seen > NOW() - INTERVAL '60 seconds'
             AND slot_index IS NOT NULL 
             AND slot_index >= 0
         `;
@@ -315,7 +315,7 @@ export default async function handler(req: any, res: any) {
           EXTRACT(EPOCH FROM last_seen) * 1000 AS last_seen
         FROM room_members
         WHERE UPPER(room_code) = ${roomCode}
-          AND last_seen > NOW() - INTERVAL '25 seconds'
+          AND last_seen > NOW() - INTERVAL '60 seconds'
         ORDER BY 
           is_host DESC, 
           CASE WHEN slot_index IS NOT NULL AND slot_index >= 0 THEN slot_index ELSE 99 END ASC,
@@ -391,7 +391,7 @@ export default async function handler(req: any, res: any) {
             EXTRACT(EPOCH FROM last_seen) * 1000 AS last_seen
           FROM room_members
           WHERE UPPER(room_code) = ${roomCode}
-            AND last_seen > NOW() - INTERVAL '25 seconds'
+            AND last_seen > NOW() - INTERVAL '60 seconds'
           ORDER BY 
             is_host DESC, 
             CASE WHEN slot_index IS NOT NULL AND slot_index >= 0 THEN slot_index ELSE 99 END ASC,
@@ -481,7 +481,7 @@ export default async function handler(req: any, res: any) {
             WHERE UPPER(room_code) = ${roomCode} 
               AND slot_index = ${targetSlotIndex} 
               AND id != ${targetMemberId}
-              AND last_seen > NOW() - INTERVAL '25 seconds'
+              AND last_seen > NOW() - INTERVAL '60 seconds'
             LIMIT 1;
           `;
 
@@ -507,7 +507,7 @@ export default async function handler(req: any, res: any) {
             EXTRACT(EPOCH FROM last_seen) * 1000 AS last_seen
           FROM room_members
           WHERE UPPER(room_code) = ${roomCode}
-            AND last_seen > NOW() - INTERVAL '25 seconds'
+            AND last_seen > NOW() - INTERVAL '60 seconds'
           ORDER BY 
             is_host DESC, 
             CASE WHEN slot_index IS NOT NULL AND slot_index >= 0 THEN slot_index ELSE 99 END ASC,
@@ -570,7 +570,7 @@ export default async function handler(req: any, res: any) {
           EXTRACT(EPOCH FROM last_seen) * 1000 AS last_seen
         FROM room_members
         WHERE UPPER(room_code) = ${roomCode}
-          AND last_seen > NOW() - INTERVAL '25 seconds'
+          AND last_seen > NOW() - INTERVAL '60 seconds'
         ORDER BY 
           is_host DESC, 
           CASE WHEN slot_index IS NOT NULL AND slot_index >= 0 THEN slot_index ELSE 99 END ASC,

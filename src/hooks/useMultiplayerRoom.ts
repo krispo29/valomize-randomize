@@ -14,17 +14,19 @@ import {
   type MapVotePayload,
   type RerollRequestPayload,
   type RoomActivityItem,
+  type RollTriggerPayload,
 } from '@/types/multiplayer';
 import { type MatchRecord } from '@/types/stats';
 import {
   subscribeToRoom,
   broadcastStateSync,
+  broadcastRollTrigger as serviceBroadcastRollTrigger,
+  broadcastRequestRoomState,
   broadcastMatchRecorded,
   sanitizeRoomCode,
   generateRoomCode,
   sendRoomHeartbeat,
   leaveRoomPresence,
-  sendBeaconLeave,
   kickRoomMember,
   broadcastMemberKicked,
   updateMemberSlot,
@@ -68,7 +70,9 @@ export function useMultiplayerRoom(
   onSlotUpdated?: (payload: SlotUpdatedPayload) => void,
   onEmojiReaction?: (payload: EmojiReactionPayload) => void,
   onReadyCheckStart?: (payload: ReadyCheckStartPayload) => void,
-  onReadyCheckEnd?: (payload: ReadyCheckEndPayload) => void
+  onReadyCheckEnd?: (payload: ReadyCheckEndPayload) => void,
+  onRollTrigger?: (payload: RollTriggerPayload) => void,
+  onRequestRoomState?: () => void
 ) {
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [activeReadyCheck, setActiveReadyCheck] = useState<ActiveReadyCheck | null>(null);
@@ -135,6 +139,9 @@ export function useMultiplayerRoom(
   const [mySlotIndex, setMySlotIndex] = useState<number | null>(null);
   const sessionIdRef = useRef<string>(getPlayerSessionId());
   const prevMemberIdsRef = useRef<Set<string>>(new Set());
+  const sequenceCounterRef = useRef<number>(0);
+  const lastSeenSeqRef = useRef<number>(0);
+  const lastSeenTimestampRef = useRef<number>(0);
 
   const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
   const leaveRoomRef = useRef<() => void>(() => {});
@@ -146,8 +153,36 @@ export function useMultiplayerRoom(
       if (msg.type === 'STATE_SYNC') {
         const state = msg.payload as RoomState;
         if (state) {
+          const incomingSeq = state.sequenceId || 0;
+          const incomingTime = state.lastUpdated || msg.timestamp || 0;
+
+          // Sequence Guard: Discard stale / out-of-order state packets
+          if (incomingSeq > 0 && incomingSeq < lastSeenSeqRef.current) {
+            return;
+          }
+          if (incomingSeq === 0 && incomingTime > 0 && incomingTime < lastSeenTimestampRef.current) {
+            return;
+          }
+
+          if (incomingSeq > 0) lastSeenSeqRef.current = incomingSeq;
+          if (incomingTime > 0) lastSeenTimestampRef.current = incomingTime;
+
           setLastSyncedAt(Date.now());
           onRemoteStateReceived?.(state);
+        }
+      } else if (msg.type === 'ROLL_TRIGGER') {
+        const payload = msg.payload as RollTriggerPayload;
+        if (payload) {
+          if (payload.sequenceId && payload.sequenceId < lastSeenSeqRef.current) {
+            return;
+          }
+          if (payload.sequenceId) lastSeenSeqRef.current = payload.sequenceId;
+          onRollTrigger?.(payload);
+          addActivityLog(`หัวห้องเริ่มสุ่มตัวละคร 🎲`, '🎲');
+        }
+      } else if (msg.type === 'REQUEST_ROOM_STATE') {
+        if (isHost) {
+          onRequestRoomState?.();
         }
       } else if (msg.type === 'MATCH_RECORDED') {
         const match = msg.payload as MatchRecord;
@@ -290,7 +325,7 @@ export function useMultiplayerRoom(
         }
       }
     },
-    [onRemoteStateReceived, onRemoteMatchReceived, onHostTransferred, onMemberKicked, onSelfKicked, onSlotUpdated, onEmojiReaction, onReadyCheckStart, onReadyCheckEnd, isHost, addActivityLog]
+    [onRemoteStateReceived, onRemoteMatchReceived, onHostTransferred, onMemberKicked, onSelfKicked, onSlotUpdated, onEmojiReaction, onReadyCheckStart, onReadyCheckEnd, onRollTrigger, onRequestRoomState, isHost, addActivityLog]
   );
 
   // Auto-connect if room query parameter exists
@@ -320,10 +355,13 @@ export function useMultiplayerRoom(
         subscriptionRef.current = null;
       }
 
+      // Ensure session ID is linked with this room code in storage
+      sessionIdRef.current = getPlayerSessionId(cleanCode);
+
       setRoomCode(cleanCode);
       setIsHost(asHost);
       saveRoomHost(cleanCode, asHost);
-      setConnectionStatus('CONNECTED');
+      setConnectionStatus('CONNECTING');
 
       // Update URL query param without reload
       try {
@@ -340,15 +378,21 @@ export function useMultiplayerRoom(
         (status) => {
           if (status === 'SUBSCRIBED') {
             setConnectionStatus('CONNECTED');
+            // If guest, immediately request room state from Host over WebSocket for instant state sync (<30ms)
+            if (!asHost) {
+              broadcastRequestRoomState(cleanCode, myPlayerName, sessionIdRef.current).catch(() => {});
+            }
           } else if (status === 'CLOSED') {
             setConnectionStatus('DISCONNECTED');
+          } else if (status === 'ERROR') {
+            setConnectionStatus('CONNECTING');
           }
         }
       );
 
       subscriptionRef.current = sub;
     },
-    [handleIncomingMessage]
+    [handleIncomingMessage, myPlayerName]
   );
 
   const createRoom = useCallback(
@@ -498,37 +542,92 @@ export function useMultiplayerRoom(
 
   leaveRoomRef.current = leaveRoom;
 
-  // Instant disconnect via Beacon API on page unload/close (for guests)
+  // Session preservation across page reloads (F5):
+  // Explicit leaves are handled by leaveRoom(). Background tab closures expire via the 60s timeout naturally.
   useEffect(() => {
     if (!roomCode) return;
 
-    const handleUnload = () => {
-      // If host, we do NOT delete immediately so F5 refresh preserves host status
-      if (!isHost) {
-        sendBeaconLeave(roomCode, sessionIdRef.current);
-      }
-    };
+    // We do NOT send destructive beacon leave on beforeunload so that F5 refreshes
+    // preserve both host and guest slots seamlessly.
+    const handleUnload = () => {};
 
     window.addEventListener('beforeunload', handleUnload);
 
     return () => {
       window.removeEventListener('beforeunload', handleUnload);
     };
-  }, [roomCode, isHost]);
+  }, [roomCode]);
+
+  const dbPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (dbPersistTimerRef.current) {
+        clearTimeout(dbPersistTimerRef.current);
+        dbPersistTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const broadcastState = useCallback(
-    async (state: RoomState) => {
+    async (state: RoomState, persistImmediately: boolean = false) => {
       if (!roomCode || !isHost) return;
+
+      sequenceCounterRef.current += 1;
+      const stateWithSeq: RoomState = {
+        ...state,
+        sequenceId: sequenceCounterRef.current,
+        lastUpdated: Date.now(),
+      };
+
       try {
-        sessionStorage.setItem(`valomize_room_cache_${roomCode}`, JSON.stringify(state));
+        sessionStorage.setItem(`valomize_room_cache_${roomCode}`, JSON.stringify(stateWithSeq));
       } catch {
         // ignore
       }
-      // Broadcast via Realtime WebSocket
-      await broadcastStateSync(roomCode, 'host', state);
-      // Persist to Neon Postgres so late joiners see it
-      saveRoomStateToDatabase(roomCode, state).catch(() => {});
+
+      // 1. Instant WebSocket broadcast across all connected clients (<25ms)
+      await broadcastStateSync(roomCode, 'host', stateWithSeq);
       setLastSyncedAt(Date.now());
+
+      // 2. Offload Database: Skip intermediate card animations (GATHERING, SHUFFLING, DEALING)
+      // Only stable states (IDLE, VICTORY, or explicit immediate persistence) need to hit Neon Postgres
+      const isTransientAnimation =
+        stateWithSeq.phase === 'GATHERING' ||
+        stateWithSeq.phase === 'SHUFFLING' ||
+        (stateWithSeq.phase === 'DEALING' && !stateWithSeq.showVictory);
+
+      if (isTransientAnimation) {
+        return; // Zero DB writes during intermediate dealing animation frames!
+      }
+
+      // 3. Debounce stable state persistence to collapse rapid consecutive updates
+      if (dbPersistTimerRef.current) {
+        clearTimeout(dbPersistTimerRef.current);
+        dbPersistTimerRef.current = null;
+      }
+
+      if (persistImmediately) {
+        saveRoomStateToDatabase(roomCode, stateWithSeq).catch(() => {});
+      } else {
+        dbPersistTimerRef.current = setTimeout(() => {
+          dbPersistTimerRef.current = null;
+          saveRoomStateToDatabase(roomCode, stateWithSeq).catch(() => {});
+        }, 1200);
+      }
+    },
+    [roomCode, isHost]
+  );
+
+  const broadcastRollTrigger = useCallback(
+    async (payload: Omit<RollTriggerPayload, 'sequenceId'>) => {
+      if (!roomCode || !isHost) return;
+      sequenceCounterRef.current += 1;
+      const fullPayload: RollTriggerPayload = {
+        ...payload,
+        sequenceId: sequenceCounterRef.current,
+      };
+      await serviceBroadcastRollTrigger(roomCode, 'host', fullPayload);
     },
     [roomCode, isHost]
   );
@@ -815,6 +914,7 @@ export function useMultiplayerRoom(
     joinRoom,
     leaveRoom,
     broadcastState,
+    broadcastRollTrigger,
     broadcastMatch,
     transferHost,
     kickMember,

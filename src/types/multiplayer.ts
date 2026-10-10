@@ -19,7 +19,16 @@ export interface RoomState {
   deckIndices?: number[];
   gridIndices?: number[];
   showVictory: boolean;
+  activePartyPreset?: string;
+  sequenceId?: number;
   lastUpdated: number;
+}
+
+export interface RollTriggerPayload {
+  sequenceId: number;
+  assignments: Record<number, Agent>;
+  startedAt: number;
+  isTurbo: boolean;
 }
 
 export interface RoomMember {
@@ -109,6 +118,7 @@ export interface MultiplayerSyncMessage {
   type: 
     | 'STATE_SYNC' 
     | 'ROLL_TRIGGER' 
+    | 'REQUEST_ROOM_STATE'
     | 'MATCH_RECORDED' 
     | 'ROOM_PING' 
     | 'MEMBER_JOIN' 

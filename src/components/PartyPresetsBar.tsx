@@ -81,12 +81,14 @@ interface PartyPresetsBarProps {
   readonly activePresetId: string;
   readonly onSelectPreset: (presetId: string) => void;
   readonly className?: string;
+  readonly isGuest?: boolean;
 }
 
 export function PartyPresetsBar({
   activePresetId,
   onSelectPreset,
   className,
+  isGuest = false,
 }: PartyPresetsBarProps) {
   return (
     <div className={cn("w-full flex flex-col items-center gap-2", className)}>
@@ -103,13 +105,18 @@ export function PartyPresetsBar({
             <button
               key={preset.id}
               type="button"
-              onClick={() => onSelectPreset(preset.id)}
-              title={`${preset.name}: ${preset.description}`}
+              disabled={isGuest}
+              onClick={() => {
+                if (!isGuest) onSelectPreset(preset.id);
+              }}
+              title={isGuest ? `${preset.name} (ตั้งค่าโดยหัวห้อง): ${preset.description}` : `${preset.name}: ${preset.description}`}
               className={cn(
-                "relative px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border select-none active:scale-95",
+                "relative px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border select-none",
+                !isGuest && "active:scale-95 cursor-pointer",
+                isGuest && "cursor-default",
                 isActive
                   ? "bg-zinc-800 text-white border-red-500/80 shadow-[0_0_12px_rgba(239,68,68,0.3)] ring-1 ring-red-500/40"
-                  : cn("bg-zinc-900/60 text-zinc-400 border-zinc-800 hover:text-white hover:bg-zinc-800/80", preset.badgeBg)
+                  : cn("bg-zinc-900/60 text-zinc-400 border-zinc-800", !isGuest && "hover:text-white hover:bg-zinc-800/80", !isGuest && preset.badgeBg)
               )}
             >
               <Icon className={cn("w-3.5 h-3.5", isActive ? "text-red-400" : preset.color)} />

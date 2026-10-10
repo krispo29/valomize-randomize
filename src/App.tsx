@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AgentCard } from '@/components/AgentCard';
 import { RoleSelector } from '@/components/RoleSelector';
@@ -16,7 +16,7 @@ import { useMatchStats } from '@/hooks/useMatchStats';
 import { useValorantData } from '@/hooks/useValorantData';
 import { usePlayerProfiles } from '@/hooks/usePlayerProfiles';
 import { useMultiplayerRoom } from '@/hooks/useMultiplayerRoom';
-import { type RoomState, type EmojiReactionPayload } from '@/types/multiplayer';
+import { type RoomState, type EmojiReactionPayload, type RollTriggerPayload } from '@/types/multiplayer';
 import { type MatchRecord } from '@/types/stats';
 import { saveMatchToDatabase, sanitizeRoomCode, getPlayerSessionId } from '@/services/supabaseService';
 import { VictoryScreen } from '@/components/VictoryScreen';
@@ -56,7 +56,7 @@ function App() {
   const { agents: liveAgents } = useValorantData();
 
   // Player Profiles & Ranks State (Phase 3)
-  const { profiles, setPlayerRank, syncPlayerRiot, setComfortAgents } = usePlayerProfiles(friends);
+  const { profiles, setPlayerRank, syncPlayerRiot, setComfortAgents, replaceProfiles } = usePlayerProfiles(friends);
   const [showProfilesModal, setShowProfilesModal] = useState(false);
   const [showMapVetoModal, setShowMapVetoModal] = useState(false);
   const [showGunChallengeModal, setShowGunChallengeModal] = useState(false);
@@ -69,12 +69,26 @@ function App() {
   const [showMultiplayerModal, setShowMultiplayerModal] = useState(false);
 
   // Multiplayer Room State (Phase 4)
+  const isRollingRef = useRef(false);
+  const onRollTriggerRef = useRef<(payload: RollTriggerPayload) => void>(() => {});
+  const onRequestRoomStateRef = useRef<() => void>(() => {});
+
   const handleRemoteState = (state: RoomState) => {
+    // Drop intermediate non-IDLE packets during local roll animation to prevent desync jitter
+    if (isRollingRef.current && state.phase !== 'IDLE') {
+      return;
+    }
     if (state.friends && state.friends.length > 0) {
       const realFriends = state.friends.filter(f => !f.startsWith('รอ') && f !== 'Waiting...');
       if (realFriends.length > 0 && !isInRoom) {
         setFriends(realFriends);
       }
+    }
+    if (state.profiles && Object.keys(state.profiles).length > 0) {
+      replaceProfiles(state.profiles);
+    }
+    if (state.activePartyPreset) {
+      setActivePartyPreset(state.activePartyPreset);
     }
     if (state.selectedMap !== undefined) {
       setSelectedMap(state.selectedMap);
@@ -129,6 +143,7 @@ function App() {
     joinRoom,
     leaveRoom,
     broadcastState,
+    broadcastRollTrigger,
     broadcastMatch,
     transferHost,
     kickMember,
@@ -200,6 +215,12 @@ function App() {
         setToastMessage('⏳ การเช็กความพร้อมสิ้นสุดลง');
       }
       setTimeout(() => setToastMessage(null), 3500);
+    },
+    (payload) => {
+      onRollTriggerRef.current(payload);
+    },
+    () => {
+      onRequestRoomStateRef.current();
     }
   );
 
@@ -487,6 +508,7 @@ function App() {
           deckIndices: [],
           gridIndices,
           showVictory,
+          activePartyPreset,
           lastUpdated: Date.now(),
         });
       }
@@ -530,6 +552,7 @@ function App() {
         deckIndices: [],
         gridIndices,
         showVictory,
+        activePartyPreset,
         lastUpdated: Date.now(),
       });
     }
@@ -762,183 +785,123 @@ function App() {
       return final;
   };
 
-  const handleRollSafe = async () => {
-    if (phase !== 'IDLE' || isGuest) return;
-    clearRerollRequests();
-    
-    // TURBO MODE: 0.1s instant roll, skips deal animation
-    if (isTurbo) {
-      playInstantRoll();
-      setPhase('GATHERING');
+  const executeRollAnimation = async (
+    results: Record<number, Agent | null>,
+    isTurboMode: boolean
+  ) => {
+    if (isRollingRef.current) return;
+    isRollingRef.current = true;
+
+    try {
+      if (isTurboMode) {
+        playInstantRoll();
+        setPhase('GATHERING');
+        setEditMode(false);
+        setShowSettings(false);
+        setShowMapSelector(false);
+        setShowVictory(false);
+
+        const allIndices = activeFriends.map((_, i) => i);
+        setGridIndices(allIndices);
+        setDeckIndices([]);
+        setAssignmentsByIndex(results);
+        setRevealedIndices(new Set(allIndices));
+
+        await new Promise((r) => setTimeout(r, 120));
+        setPhase('IDLE');
+        setShowVictory(true);
+        return;
+      }
+
+      // 0. Setup
       setEditMode(false);
       setShowSettings(false);
       setShowMapSelector(false);
       setShowVictory(false);
+      setAssignmentsByIndex({});
+      setRevealedIndices(new Set());
+      playRoll();
 
+      // 1. GATHER
+      setPhase('GATHERING');
       const allIndices = activeFriends.map((_, i) => i);
-      setGridIndices(allIndices);
-      setDeckIndices([]);
+      setGridIndices([]);
+      const currentDeck = [...allIndices];
+      setDeckIndices(currentDeck);
 
-      const results = calculateAssignments();
-      setAssignmentsByIndex(results);
-      setRevealedIndices(new Set(allIndices));
+      await new Promise((r) => setTimeout(r, 800));
 
-      if (isInRoom && isHost && roomCode) {
-        broadcastState({
-          roomCode,
-          hostName: activeFriends[0] || 'Host',
-          createdAt: Date.now(),
-          friends: activeFriends,
-          profiles,
-          selectedMap,
-          playerStatuses,
-          mvpRoleChoices,
-          rolesCount,
-          assignmentsByIndex: results,
-          phase: 'IDLE',
-          revealedIndices: allIndices,
-          deckIndices: [],
-          gridIndices: allIndices,
-          showVictory: true,
-          lastUpdated: Date.now(),
-        });
+      // 2. SHUFFLE
+      setPhase('SHUFFLING');
+      for (let i = 0; i < 3; i++) {
+        currentDeck.sort(() => 0.5 - Math.random());
+        setDeckIndices([...currentDeck]);
+        await new Promise((r) => setTimeout(r, 400));
       }
 
-      await new Promise(r => setTimeout(r, 120));
-      setPhase('IDLE');
-      setShowVictory(true);
-      return;
-    }
+      setAssignmentsByIndex(results);
 
-    // 0. Setup
-    setEditMode(false);
-    setShowSettings(false);
-    setShowMapSelector(false);
-    setShowVictory(false);
-    setAssignmentsByIndex({});
-    setRevealedIndices(new Set());
-    playRoll();
+      // 3. DEAL & REVEAL LOOP
+      setPhase('DEALING');
+      stopRoll();
 
-    // 1. GATHER
-    setPhase('GATHERING');
-    const allIndices = activeFriends.map((_, i) => i);
-    setGridIndices([]);
-    const currentDeck = [...allIndices];
-    setDeckIndices(currentDeck);
+      const indicesToDeal = activeFriends.map((_, i) => i);
+      const currRevealed = new Set<number>();
+      const currGrid: number[] = [];
 
-    if (isInRoom && isHost && roomCode) {
-      broadcastState({
-        roomCode,
-        hostName: activeFriends[0] || 'Host',
-        createdAt: Date.now(),
-        friends: activeFriends,
-        profiles,
-        selectedMap,
-        playerStatuses,
-        mvpRoleChoices,
-        rolesCount,
-        assignmentsByIndex: {},
-        phase: 'GATHERING',
-        revealedIndices: [],
-        deckIndices: currentDeck,
-        gridIndices: [],
-        showVictory: false,
-        lastUpdated: Date.now(),
-      });
-    }
-
-    await new Promise(r => setTimeout(r, 800));
-
-    // 2. SHUFFLE
-    setPhase('SHUFFLING');
-    for (let i = 0; i < 3; i++) {
-       currentDeck.sort(() => 0.5 - Math.random());
-       setDeckIndices([...currentDeck]);
-       await new Promise(r => setTimeout(r, 400));
-    }
-    
-    const results = calculateAssignments();
-    setAssignmentsByIndex(results);
-
-    if (isInRoom && isHost && roomCode) {
-      broadcastState({
-        roomCode,
-        hostName: activeFriends[0] || 'Host',
-        createdAt: Date.now(),
-        friends: activeFriends,
-        profiles,
-        selectedMap,
-        playerStatuses,
-        mvpRoleChoices,
-        rolesCount,
-        assignmentsByIndex: results,
-        phase: 'SHUFFLING',
-        revealedIndices: [],
-        deckIndices: currentDeck,
-        gridIndices: [],
-        showVictory: false,
-        lastUpdated: Date.now(),
-      });
-    }
-
-    // 3. DEAL & REVEAL LOOP
-    setPhase('DEALING');
-    stopRoll();
-    
-    const indicesToDeal = activeFriends.map((_, i) => i);
-    const currRevealed = new Set<number>();
-    const currGrid: number[] = [];
-    
-    for (const playerIndex of indicesToDeal) {
+      for (const playerIndex of indicesToDeal) {
         // A. Deal Card (Face Down)
         const deckPos = currentDeck.indexOf(playerIndex);
         if (deckPos > -1) currentDeck.splice(deckPos, 1);
-        
+
         currGrid.push(playerIndex);
         setDeckIndices([...currentDeck]);
         setGridIndices([...currGrid]);
-        
-        await new Promise(r => setTimeout(r, 600)); 
+
+        await new Promise((r) => setTimeout(r, 600));
 
         // B. Reveal Card (Face Up)
         currRevealed.add(playerIndex);
         setRevealedIndices(new Set(currRevealed));
         playReveal();
 
-        if (isInRoom && isHost && roomCode) {
-          broadcastState({
-            roomCode,
-            hostName: activeFriends[0] || 'Host',
-            createdAt: Date.now(),
-            friends: activeFriends,
-            profiles,
-            selectedMap,
-            playerStatuses,
-            mvpRoleChoices,
-            rolesCount,
-            assignmentsByIndex: results,
-            phase: 'DEALING',
-            revealedIndices: Array.from(currRevealed),
-            deckIndices: [...currentDeck],
-            gridIndices: [...currGrid],
-            showVictory: false,
-            lastUpdated: Date.now(),
-          });
-        }
+        await new Promise((r) => setTimeout(r, 400));
+      }
 
-        await new Promise(r => setTimeout(r, 400));
+      // 4. VICTORY
+      setPhase('REVEALING');
+      await new Promise((r) => setTimeout(r, 500));
+      playVictory();
+      setShowVictory(true);
+      setPhase('IDLE');
+      setGridIndices(allIndices);
+      setDeckIndices([]);
+    } finally {
+      isRollingRef.current = false;
+    }
+  };
+
+  const handleRollSafe = async () => {
+    if (phase !== 'IDLE' || isGuest || isRollingRef.current) return;
+    clearRerollRequests();
+
+    const results = calculateAssignments();
+
+    // Deterministic Roll Trigger: Send initial payload to guests (<25ms)
+    if (isInRoom && isHost && roomCode) {
+      broadcastRollTrigger({
+        assignments: results,
+        startedAt: Date.now(),
+        isTurbo,
+      });
     }
 
-    // 4. VICTORY
-    setPhase('REVEALING');
-    await new Promise(r => setTimeout(r, 500));
-    playVictory();
-    setShowVictory(true);
-    setPhase('IDLE');
-    setGridIndices(allIndices);
-    setDeckIndices([]);
+    // Run identical deterministic animation locally
+    await executeRollAnimation(results, isTurbo);
 
+    // Final Ground Truth: Broadcast authoritative state once after roll finishes
     if (isInRoom && isHost && roomCode) {
+      const allIndices = activeFriends.map((_, i) => i);
       broadcastState({
         roomCode,
         hostName: activeFriends[0] || 'Host',
@@ -951,14 +914,50 @@ function App() {
         rolesCount,
         assignmentsByIndex: results,
         phase: 'IDLE',
-        revealedIndices: Array.from(currRevealed),
+        revealedIndices: allIndices,
         deckIndices: [],
         gridIndices: allIndices,
         showVictory: true,
+        activePartyPreset,
         lastUpdated: Date.now(),
-      });
+      }, true); // Persist immediately to Database!
     }
   };
+
+  // Wire incoming deterministic roll trigger from host to guests
+  useEffect(() => {
+    onRollTriggerRef.current = (payload: RollTriggerPayload) => {
+      if (!isGuest) return;
+      executeRollAnimation(payload.assignments, payload.isTurbo);
+    };
+  });
+
+  // Wire state fast-query responses when new guests join (<30ms)
+  useEffect(() => {
+    onRequestRoomStateRef.current = () => {
+      if (isHost && roomCode) {
+        broadcastState({
+          roomCode,
+          hostName: activeFriends[0] || 'Host',
+          createdAt: Date.now(),
+          friends: activeFriends,
+          profiles,
+          selectedMap,
+          playerStatuses,
+          mvpRoleChoices,
+          rolesCount,
+          assignmentsByIndex,
+          phase,
+          revealedIndices: Array.from(revealedIndices),
+          deckIndices,
+          gridIndices,
+          showVictory,
+          activePartyPreset,
+          lastUpdated: Date.now(),
+        });
+      }
+    };
+  });
 
   const handleStatusChange = (index: number, newStatus: 'MVP' | 'BOTTOM' | null) => {
     if (isGuest) return;
@@ -1346,6 +1345,28 @@ function App() {
                             setSelectedMap(map);
                             if (map) { setShowSettings(false); setShowMapSelector(false); }
                             else { setShowMapSelector(false); }
+
+                            if (isInRoom && isHost && roomCode) {
+                              broadcastState({
+                                roomCode,
+                                hostName: activeFriends[0] || 'Host',
+                                createdAt: Date.now(),
+                                friends: activeFriends,
+                                profiles,
+                                selectedMap: map,
+                                playerStatuses,
+                                mvpRoleChoices,
+                                rolesCount,
+                                assignmentsByIndex,
+                                phase,
+                                revealedIndices: Array.from(revealedIndices),
+                                deckIndices,
+                                gridIndices,
+                                showVictory,
+                                activePartyPreset,
+                                lastUpdated: Date.now(),
+                              });
+                            }
                         }} 
                         isExpanded={showMapSelector}
                         onToggleExpand={() => setShowMapSelector(!showMapSelector)}
@@ -1396,17 +1417,38 @@ function App() {
                     </motion.div>
                 )}
 
-                {/* Party Presets Bar - Host only */}
-                {!isGuest && (
-                  <PartyPresetsBar
-                    activePresetId={activePartyPreset}
-                    onSelectPreset={(presetId) => {
-                      setActivePartyPreset(presetId);
-                      playClick();
-                    }}
-                    className="mb-4"
-                  />
-                )}
+                {/* Party Presets Bar - Visible to both, editable by Host */}
+                <PartyPresetsBar
+                  activePresetId={activePartyPreset}
+                  isGuest={isGuest}
+                  onSelectPreset={(presetId) => {
+                    if (isGuest) return;
+                    setActivePartyPreset(presetId);
+                    playClick();
+                    if (isInRoom && isHost && roomCode) {
+                      broadcastState({
+                        roomCode,
+                        hostName: activeFriends[0] || 'Host',
+                        createdAt: Date.now(),
+                        friends: activeFriends,
+                        profiles,
+                        selectedMap,
+                        playerStatuses,
+                        mvpRoleChoices,
+                        rolesCount,
+                        assignmentsByIndex,
+                        phase,
+                        revealedIndices: Array.from(revealedIndices),
+                        deckIndices,
+                        gridIndices,
+                        showVictory,
+                        activePartyPreset: presetId,
+                        lastUpdated: Date.now(),
+                      });
+                    }
+                  }}
+                  className="mb-4"
+                />
 
                 {/* Host notification of reroll requests */}
                 {isInRoom && isHost && rerollRequests.length > 0 && (
@@ -1948,6 +1990,27 @@ function App() {
             playLock();
             setToastMessage(`🏆 เลือกด่านจากการ Veto: ${map}`);
             setTimeout(() => setToastMessage(null), 3000);
+            if (isInRoom && isHost && roomCode) {
+              broadcastState({
+                roomCode,
+                hostName: activeFriends[0] || 'Host',
+                createdAt: Date.now(),
+                friends: activeFriends,
+                profiles,
+                selectedMap: map,
+                playerStatuses,
+                mvpRoleChoices,
+                rolesCount,
+                assignmentsByIndex,
+                phase,
+                revealedIndices: Array.from(revealedIndices),
+                deckIndices,
+                gridIndices,
+                showVictory,
+                activePartyPreset,
+                lastUpdated: Date.now(),
+              });
+            }
           }}
           onSelectAndRoll={(map) => {
             setSelectedMap(map);

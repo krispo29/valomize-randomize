@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient, type RealtimeChannel } from '@supabase/supabase-js';
-import { type RoomState, type MultiplayerSyncMessage, type RoomMember } from '@/types/multiplayer';
+import { type RoomState, type MultiplayerSyncMessage, type RoomMember, type RollTriggerPayload } from '@/types/multiplayer';
 import { type MatchRecord } from '@/types/stats';
 
 export interface RoomHeartbeatResponse {
@@ -12,6 +12,8 @@ const SUPABASE_CONFIG_KEY = 'valomize_supabase_config_v1';
 const SESSION_ID_KEY = 'valomize_player_session_id';
 const DISPLAY_NAME_KEY = 'valomize_player_display_name';
 const HOST_ROOMS_KEY = 'valomize_host_rooms_v1';
+const PERSISTENT_DEVICE_ID_KEY = 'valomize_player_device_id_v2';
+const ROOM_SESSION_PREFIX = 'valomize_room_session_v2_';
 
 export function isRoomHostStored(roomCode: string): boolean {
   if (!roomCode) return false;
@@ -52,13 +54,37 @@ export function removeRoomHost(roomCode: string): void {
 }
 
 
-export function getPlayerSessionId(): string {
+export function getPlayerSessionId(roomCode?: string): string {
   try {
     let id = sessionStorage.getItem(SESSION_ID_KEY);
+
+    // If roomCode is provided, check if this browser previously had an active session in this room
+    if (!id && roomCode) {
+      const clean = sanitizeRoomCode(roomCode);
+      const savedRoomSession = localStorage.getItem(`${ROOM_SESSION_PREFIX}${clean}`);
+      if (savedRoomSession) {
+        id = savedRoomSession;
+        sessionStorage.setItem(SESSION_ID_KEY, id);
+      }
+    }
+
+    // Fallback to persistent device ID from localStorage (or create one)
     if (!id) {
-      id = 'user_' + Math.random().toString(36).substring(2, 9);
+      let deviceId = localStorage.getItem(PERSISTENT_DEVICE_ID_KEY);
+      if (!deviceId) {
+        deviceId = 'user_' + Math.random().toString(36).substring(2, 9);
+        localStorage.setItem(PERSISTENT_DEVICE_ID_KEY, deviceId);
+      }
+      id = deviceId;
       sessionStorage.setItem(SESSION_ID_KEY, id);
     }
+
+    // Save session association for this room
+    if (roomCode) {
+      const clean = sanitizeRoomCode(roomCode);
+      localStorage.setItem(`${ROOM_SESSION_PREFIX}${clean}`, id);
+    }
+
     return id;
   } catch {
     return 'user_' + Math.random().toString(36).substring(2, 9);
@@ -148,6 +174,12 @@ export async function fetchRoomMembers(
 export async function leaveRoomPresence(roomCode: string, sessionId: string): Promise<void> {
   const cleanCode = sanitizeRoomCode(roomCode);
   if (!cleanCode || !sessionId) return;
+
+  try {
+    localStorage.removeItem(`${ROOM_SESSION_PREFIX}${cleanCode}`);
+  } catch {
+    // ignore
+  }
 
   try {
     await fetch('/api/rooms', {
@@ -685,6 +717,9 @@ export function subscribeToRoom(
   onStatusChange?: (status: 'SUBSCRIBED' | 'CLOSED' | 'ERROR') => void
 ): { unsubscribe: () => void } {
   const cleanCode = sanitizeRoomCode(rawRoomCode);
+  let isUnsubscribed = false;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let reconnectAttempt = 0;
 
   // 1. Setup Local Tab-to-Tab BroadcastChannel for instant local testing
   try {
@@ -703,12 +738,19 @@ export function subscribeToRoom(
     // ignore
   }
 
-  // 2. Setup Supabase Realtime Channel (WebSocket across all devices)
-  const client = getSupabase();
-  if (client) {
+  // 2. Setup Supabase Realtime Channel (WebSocket across all devices) with Auto-Reconnect
+  const setupRealtimeChannel = () => {
+    if (isUnsubscribed) return;
+    const client = getSupabase();
+    if (!client) {
+      onStatusChange?.('SUBSCRIBED');
+      return;
+    }
+
     try {
       if (currentChannel) {
         currentChannel.unsubscribe();
+        currentChannel = null;
       }
 
       const safeChannelName = `room_${cleanCode.replace(/[^a-zA-Z0-9_]/g, '_')}`;
@@ -728,24 +770,80 @@ export function subscribeToRoom(
         })
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') {
+            reconnectAttempt = 0;
             onStatusChange?.('SUBSCRIBED');
           } else if (status === 'CLOSED') {
             onStatusChange?.('CLOSED');
+            if (!isUnsubscribed) scheduleReconnect();
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            onStatusChange?.('SUBSCRIBED');
+            onStatusChange?.('ERROR');
+            if (!isUnsubscribed) scheduleReconnect();
           }
         });
 
       currentChannel = channel;
     } catch {
-      onStatusChange?.('SUBSCRIBED');
+      onStatusChange?.('ERROR');
+      if (!isUnsubscribed) scheduleReconnect();
     }
-  } else {
-    onStatusChange?.('SUBSCRIBED');
+  };
+
+  const scheduleReconnect = () => {
+    if (isUnsubscribed || reconnectTimer) return;
+    const delay = Math.min(1000 * Math.pow(1.5, reconnectAttempt), 10000);
+    reconnectAttempt++;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      if (!isUnsubscribed) {
+        setupRealtimeChannel();
+      }
+    }, delay);
+  };
+
+  const handleVisibilityChange = () => {
+    if (typeof document !== 'undefined' && !document.hidden && !isUnsubscribed) {
+      if (!currentChannel || (currentChannel as any).state !== 'joined') {
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+        }
+        setupRealtimeChannel();
+      }
+    }
+  };
+
+  const handleOnline = () => {
+    if (!isUnsubscribed) {
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      setupRealtimeChannel();
+    }
+  };
+
+  setupRealtimeChannel();
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('online', handleOnline);
   }
 
   return {
     unsubscribe: () => {
+      isUnsubscribed = true;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', handleOnline);
+      }
       if (currentChannel) {
         currentChannel.unsubscribe();
         currentChannel = null;
@@ -806,6 +904,38 @@ export async function broadcastStateSync(
       ...state,
       roomCode: cleanCode,
     },
+  };
+  await broadcastRoomMessage(cleanCode, msg);
+}
+
+export async function broadcastRollTrigger(
+  roomCode: string,
+  sender: string,
+  payload: RollTriggerPayload
+): Promise<void> {
+  const cleanCode = sanitizeRoomCode(roomCode);
+  const msg: MultiplayerSyncMessage = {
+    type: 'ROLL_TRIGGER',
+    roomCode: cleanCode,
+    sender,
+    timestamp: Date.now(),
+    payload,
+  };
+  await broadcastRoomMessage(cleanCode, msg);
+}
+
+export async function broadcastRequestRoomState(
+  roomCode: string,
+  requesterName: string,
+  requesterId: string
+): Promise<void> {
+  const cleanCode = sanitizeRoomCode(roomCode);
+  const msg: MultiplayerSyncMessage = {
+    type: 'REQUEST_ROOM_STATE',
+    roomCode: cleanCode,
+    sender: requesterName,
+    timestamp: Date.now(),
+    payload: { requesterId },
   };
   await broadcastRoomMessage(cleanCode, msg);
 }

@@ -148,12 +148,22 @@ export function usePlayerProfiles(friends: string[]) {
     [updateProfile]
   );
 
+  const replaceProfiles = useCallback(
+    (newProfiles: Record<number, PlayerProfile>) => {
+      if (newProfiles && typeof newProfiles === 'object' && Object.keys(newProfiles).length > 0) {
+        setProfiles(newProfiles);
+      }
+    },
+    [setProfiles]
+  );
+
   return {
     profiles,
     updateProfile,
     setPlayerRank,
     syncPlayerRiot,
     setComfortAgents,
+    replaceProfiles,
   };
 }
 
